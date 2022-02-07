@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"unicode"
@@ -11,6 +14,10 @@ import (
 )
 
 // Based on http://archagon.net/blog/2018/03/24/data-laced-with-history/
+
+var (
+	getMAC = randomMAC // For testing
+)
 
 // Atom represents an atomic operation within a replicated list.
 type Atom struct {
@@ -24,7 +31,7 @@ type Atom struct {
 
 // AtomID is the unique identifier of an atom.
 type AtomID struct {
-	// Site is index in the sitemap of the site that created an atom.
+	// Site is the index in the sitemap of the site that created an atom.
 	Site uint16
 	// Index is the order of creation of this atom in the given site.
 	Index uint32
@@ -34,6 +41,7 @@ type AtomID struct {
 
 // AtomValue is a list operation.
 type AtomValue interface {
+	json.Marshaler
 	isAtomValue()
 }
 
@@ -48,6 +56,14 @@ type Delete struct{}
 
 func (v InsertChar) isAtomValue() {}
 func (v Delete) isAtomValue()     {}
+
+func (v InsertChar) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"insert %c"`, v.Char)), nil
+}
+
+func (v Delete) MarshalJSON() ([]byte, error) {
+	return []byte(`"delete"`), nil
+}
 
 // RList is a replicated list data structure.
 type RList struct {
@@ -66,8 +82,18 @@ type RList struct {
 	Timestamp uint32
 }
 
+// Provides a random MAC address.
+func randomMAC() []byte {
+	mac := make([]byte, 6)
+	if _, err := io.ReadFull(rand.Reader, mac); err != nil {
+		panic(err.Error())
+	}
+	return mac
+}
+
 // Create UUIDv1, using local timestamp as lower bits.
 func uuidv1() uuid.UUID {
+	uuid.SetNodeID(getMAC())
 	id, err := uuid.NewUUID()
 	if err != nil {
 		panic(fmt.Sprintf("creating UUIDv1: %v", err))
