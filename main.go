@@ -16,8 +16,12 @@ import (
 // Based on http://archagon.net/blog/2018/03/24/data-laced-with-history/
 
 var (
-	getMAC = randomMAC // For testing
+	uuidv1 = randomUUIDv1 // For testing
 )
+
+// +-----------------------+
+// | Basic data structures |
+// +-----------------------+
 
 // Atom represents an atomic operation within a replicated list.
 type Atom struct {
@@ -39,52 +43,11 @@ type AtomID struct {
 	Timestamp uint32
 }
 
-// Compare returns the relative order between atom IDs.
-// If id < other, returns less than 0.
-// If id > other, returns more than 0.
-// If id = other, returns 0.
-func (id AtomID) Compare(other AtomID) int {
-	// Ascending according to timestamp (older first)
-	if id.Timestamp < other.Timestamp {
-		return -1
-	}
-	if id.Timestamp > other.Timestamp {
-		return +1
-	}
-	// Descending according to site (younger first)
-	if id.Site > other.Site {
-		return -1
-	}
-	if id.Site < other.Site {
-		return +1
-	}
-	return 0
-}
-
 // AtomValue is a list operation.
 type AtomValue interface {
 	json.Marshaler
-	isAtomValue()
-}
-
-// InsertChar represents insertion of a char to the right of another atom.
-type InsertChar struct {
-	// Char inserted in list.
-	Char rune
-}
-
-// Delete represents deleting an element from the list.
-type Delete struct{}
-
-func (v InsertChar) isAtomValue() {}
-func (v Delete) isAtomValue()     {}
-
-func (v InsertChar) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`"insert %c"`, v.Char)), nil
-}
-
-func (v Delete) MarshalJSON() ([]byte, error) {
-	return []byte(`"delete"`), nil
+	// AtomPriority returns where this atom should be placed compared with its siblings.
+	AtomPriority() int
 }
 
 // RList is a replicated list data structure.
@@ -104,25 +67,6 @@ type RList struct {
 	Timestamp uint32
 }
 
-// Provides a random MAC address.
-func randomMAC() []byte {
-	mac := make([]byte, 6)
-	if _, err := io.ReadFull(rand.Reader, mac); err != nil {
-		panic(err.Error())
-	}
-	return mac
-}
-
-// Create UUIDv1, using local timestamp as lower bits.
-func uuidv1() uuid.UUID {
-	uuid.SetNodeID(getMAC())
-	id, err := uuid.NewUUID()
-	if err != nil {
-		panic(fmt.Sprintf("creating UUIDv1: %v", err))
-	}
-	return id
-}
-
 // NewRList creates an initialized empty replicated list.
 func NewRList() *RList {
 	siteID := uuidv1()
@@ -136,7 +80,7 @@ func NewRList() *RList {
 	}
 }
 
-// Returns the index of a site is (or should be) in the sitemap.
+// Returns the index where a site is (or should be) in the sitemap.
 func siteIndex(sitemap []uuid.UUID, siteID uuid.UUID) int {
 	return sort.Search(len(sitemap), func(i int) bool {
 		return bytes.Compare(sitemap[i][:], siteID[:]) >= 0
@@ -153,15 +97,51 @@ func (l *RList) atomIndex(atomID AtomID) int {
 	return len(l.Weave)
 }
 
-func (l *RList) insertAtomAtCursor(atom Atom) {
-	l.insertAtom(atom, int(l.Cursor))
-}
-
+// Inserts an atom in the given weave index.
 func (l *RList) insertAtom(atom Atom, i int) {
 	l.Weave = append(l.Weave, Atom{})
 	copy(l.Weave[i+1:], l.Weave[i:])
 	l.Weave[i] = atom
 }
+
+// +----------+
+// | Ordering |
+// +----------+
+
+// Compare returns the relative order between atom IDs.
+func (id AtomID) Compare(other AtomID) int {
+	// Ascending according to timestamp (older first)
+	if id.Timestamp < other.Timestamp {
+		return -1
+	}
+	if id.Timestamp > other.Timestamp {
+		return +1
+	}
+	// Descending according to site (younger first)
+	if id.Site > other.Site {
+		return -1
+	}
+	if id.Site < other.Site {
+		return +1
+	}
+	return 0
+}
+
+// Compare returns the relative order between atoms.
+func (a Atom) Compare(other Atom) int {
+	// Ascending according to priority.
+	if a.Value.AtomPriority() < other.Value.AtomPriority() {
+		return -1
+	}
+	if a.Value.AtomPriority() > other.Value.AtomPriority() {
+		return +1
+	}
+	return a.ID.Compare(other.ID)
+}
+
+// +------+
+// | Fork |
+// +------+
 
 // Fork a replicated list into an independent object.
 func (l *RList) Fork() *RList {
@@ -194,6 +174,10 @@ func (l *RList) Fork() *RList {
 	copy(ll.Sitemap, l.Sitemap)
 	return ll
 }
+
+// +-------+
+// | Merge |
+// +-------+
 
 func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
 	if len(s1) < len(s2) {
@@ -292,10 +276,12 @@ func (l *RList) Merge(remote *RList) {
 			parentIndex := l.atomIndex(atom.Cause)
 			blockEnd, siblingIndices := l.causalBlock(parentIndex)
 			insertionIndex := blockEnd
-			// TODO (?): use binary search instead of linear search to find insertion point.
+			// Insert atom in reversed order compared to siblings.
+			// NOTE: not necessary to use binary search here, because iterating over siblings is strictly faster than it takes
+			// to list them.
 			for _, siblingIndex := range siblingIndices {
 				sibling := l.Weave[siblingIndex]
-				if sibling.ID.Compare(atom.ID) < 0 {
+				if atom.Compare(sibling) >= 0 {
 					insertionIndex = siblingIndex
 					break
 				}
@@ -314,6 +300,9 @@ func (l *RList) Merge(remote *RList) {
 	l.Timestamp++
 }
 
+// Returns the upper bound (exclusive) of head's causal block, plus its children's indices.
+//
+// The causal block is defined as the contiguous range containing all of head's descendants.
 func (l *RList) causalBlock(headIndex int) (int, []int) {
 	head := l.Weave[headIndex]
 	var childIndices []int
@@ -325,10 +314,20 @@ func (l *RList) causalBlock(headIndex int) (int, []int) {
 		}
 		parentTimestamp := atom.Cause.Timestamp
 		if parentTimestamp < head.ID.Timestamp {
+			// First atom whose parent has a lower timestamp (older) than head is the end
+			// of the causal block.
 			return i, childIndices
 		}
 	}
 	return len(l.Weave), childIndices
+}
+
+// +------------+
+// | Operations |
+// +------------+
+
+func (l *RList) insertAtomAtCursor(atom Atom) {
+	l.insertAtom(atom, int(l.Cursor))
 }
 
 func (l *RList) addAtom(value AtomValue) {
@@ -356,10 +355,37 @@ func (l *RList) addAtom(value AtomValue) {
 	l.Yarns[i] = append(l.Yarns[i], atom)
 }
 
+// +--------------------------+
+// | Operations - Insert char |
+// +--------------------------+
+
+// InsertChar represents insertion of a char to the right of another atom.
+type InsertChar struct {
+	// Char inserted in list.
+	Char rune
+}
+
+func (v InsertChar) AtomPriority() int { return 0 }
+func (v InsertChar) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"insert %c"`, v.Char)), nil
+}
+
 // InsertCharAfter inserts a char after the cursor position.
 func (l *RList) InsertChar(ch rune) {
 	l.addAtom(InsertChar{ch})
 	l.Cursor++
+}
+
+// +---------------------+
+// | Operations - Delete |
+// +---------------------+
+
+// Delete represents deleting an element from the list.
+type Delete struct{}
+
+func (v Delete) AtomPriority() int { return 100 }
+func (v Delete) MarshalJSON() ([]byte, error) {
+	return []byte(`"delete"`), nil
 }
 
 // DeleteChar deletes the char before the cursor position.
@@ -372,6 +398,10 @@ func (l *RList) DeleteChar() {
 	prevID := deletedAtom.Cause
 	l.Cursor = uint32(l.atomIndex(prevID) + 1)
 }
+
+// +------------+
+// | Conversion |
+// +------------+
 
 // AsString interprets list as a sequence of chars.
 func (l *RList) AsString() string {
@@ -408,6 +438,29 @@ func (l *RList) AsString() string {
 	return string(chars)
 }
 
+// +-----------+
+// | Utilities |
+// +-----------+
+
+// Provides a random MAC address.
+func randomMAC() []byte {
+	mac := make([]byte, 6)
+	if _, err := io.ReadFull(rand.Reader, mac); err != nil {
+		panic(err.Error())
+	}
+	return mac
+}
+
+// Create UUIDv1, using local timestamp as lower bits and random MAC.
+func randomUUIDv1() uuid.UUID {
+	uuid.SetNodeID(randomMAC())
+	id, err := uuid.NewUUID()
+	if err != nil {
+		panic(fmt.Sprintf("creating UUIDv1: %v", err))
+	}
+	return id
+}
+
 func toJSON(v interface{}) string {
 	bs, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -415,6 +468,10 @@ func toJSON(v interface{}) string {
 	}
 	return string(bs)
 }
+
+// +------+
+// | Test |
+// +------+
 
 func main() {
 	//
@@ -461,4 +518,5 @@ func main() {
 	// Merge site #1 into #3 --> CTRLALTDEL
 	l3.Merge(l1)
 	fmt.Println(l3.AsString())
+	fmt.Println(toJSON(l3))
 }
