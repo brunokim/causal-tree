@@ -39,6 +39,26 @@ type AtomID struct {
 	Timestamp uint32
 }
 
+// Compare returns the relative order between atom IDs.
+// If id < other, returns less than 0.
+// If id > other, returns more than 0.
+// If id = other, returns 0.
+func (id AtomID) Compare(other AtomID) int {
+	if id.Timestamp > other.Timestamp {
+		return -1
+	}
+	if id.Timestamp < other.Timestamp {
+		return +1
+	}
+	if id.Site < other.Site {
+		return -1
+	}
+	if id.Site > other.Site {
+		return +1
+	}
+	return 0
+}
+
 // AtomValue is a list operation.
 type AtomValue interface {
 	json.Marshaler
@@ -264,9 +284,20 @@ func (l *RList) Merge(remote *RList) {
 		for j := startIndex; j < len(yarn); j++ {
 			atom := yarn[j].remapSite(remoteRemap)
 			yarns[ii][j] = atom
-			// BUG: perhaps parent was not yet inserted in weave, if it's from a remote yarn not yet integrated!
+			// Insert atom in local weave.
+			// BUG: parent may not yet be inserted in weave, if it's from a remote yarn not yet integrated.
 			parentIndex := l.atomIndex(atom.Cause)
-			l.insertAtom(atom, parentIndex+1)
+			blockEnd, siblingIndices := l.causalBlock(parentIndex)
+			insertionIndex := blockEnd
+			// TODO (?): use binary search instead of linear search to find insertion point.
+			for _, siblingIndex := range siblingIndices {
+				sibling := l.Weave[siblingIndex]
+				if sibling.ID.Compare(atom.ID) >= 0 {
+					insertionIndex = siblingIndex
+					break
+				}
+			}
+			l.insertAtom(atom, insertionIndex)
 			if parentIndex < int(l.Cursor) {
 				l.Cursor++
 			}
@@ -278,6 +309,23 @@ func (l *RList) Merge(remote *RList) {
 		l.Timestamp = remote.Timestamp
 	}
 	l.Timestamp++
+}
+
+func (l *RList) causalBlock(headIndex int) (int, []int) {
+	head := l.Weave[headIndex]
+	var childIndices []int
+	for i := headIndex + 1; i < len(l.Weave); i++ {
+		atom := l.Weave[i]
+		if atom.Cause == head.ID {
+			childIndices = append(childIndices, i)
+			continue
+		}
+		parentTimestamp := atom.Cause.Timestamp
+		if parentTimestamp < head.ID.Timestamp {
+			return i, childIndices
+		}
+	}
+	return len(l.Weave), childIndices
 }
 
 func (l *RList) addAtom(value AtomValue) {
@@ -398,4 +446,7 @@ func main() {
 	// Merge site #3 into #1 --> CTRLALTDEL
 	l1.Merge(l3)
 	fmt.Println(l1.AsString())
+	// Merge site #2 into #3 --> CMDALTDEL
+	l3.Merge(l2)
+	fmt.Println(l3.AsString())
 }
