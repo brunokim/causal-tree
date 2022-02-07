@@ -44,16 +44,18 @@ type AtomID struct {
 // If id > other, returns more than 0.
 // If id = other, returns 0.
 func (id AtomID) Compare(other AtomID) int {
-	if id.Timestamp > other.Timestamp {
+	// Ascending according to timestamp (older first)
+	if id.Timestamp < other.Timestamp {
 		return -1
 	}
-	if id.Timestamp < other.Timestamp {
+	if id.Timestamp > other.Timestamp {
 		return +1
 	}
-	if id.Site < other.Site {
+	// Descending according to site (younger first)
+	if id.Site > other.Site {
 		return -1
 	}
-	if id.Site > other.Site {
+	if id.Site < other.Site {
 		return +1
 	}
 	return 0
@@ -278,8 +280,9 @@ func (l *RList) Merge(remote *RList) {
 			ii = uint16(i)
 		}
 		startIndex := len(yarns[ii])
-		if len(yarns[ii]) == 0 {
-			yarns[ii] = make([]Atom, len(yarn))
+		if len(yarn) > len(yarns[ii]) {
+			// Grow yarn to accomodate remote atoms.
+			yarns[ii] = append(yarns[ii], make([]Atom, len(yarn)-len(yarns[ii]))...)
 		}
 		for j := startIndex; j < len(yarn); j++ {
 			atom := yarn[j].remapSite(remoteRemap)
@@ -292,7 +295,7 @@ func (l *RList) Merge(remote *RList) {
 			// TODO (?): use binary search instead of linear search to find insertion point.
 			for _, siblingIndex := range siblingIndices {
 				sibling := l.Weave[siblingIndex]
-				if sibling.ID.Compare(atom.ID) >= 0 {
+				if sibling.ID.Compare(atom.ID) < 0 {
 					insertionIndex = siblingIndex
 					break
 				}
@@ -414,6 +417,12 @@ func toJSON(v interface{}) string {
 }
 
 func main() {
+	//
+	//  C - T - R - L
+	//   `- M - D - A - L - T
+	//      |   |`- D - E - L
+	//      x   x
+	//
 	// Site #1: write CMD
 	l1 := NewRList()
 	l1.InsertChar('C')
@@ -448,5 +457,8 @@ func main() {
 	fmt.Println(l1.AsString())
 	// Merge site #2 into #3 --> CMDALTDEL
 	l3.Merge(l2)
+	fmt.Println(l3.AsString())
+	// Merge site #1 into #3 --> CTRLALTDEL
+	l3.Merge(l1)
 	fmt.Println(l3.AsString())
 }
