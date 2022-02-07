@@ -115,14 +115,13 @@ func NewRList() *RList {
 }
 
 // Returns the index of a site is (or should be) in the sitemap.
-func (l *RList) siteIndex(siteID uuid.UUID) int {
-	return sort.Search(len(l.Sitemap), func(i int) bool {
-		return bytes.Compare(l.Sitemap[i][:], siteID[:]) >= 0
+func siteIndex(sitemap []uuid.UUID, siteID uuid.UUID) int {
+	return sort.Search(len(sitemap), func(i int) bool {
+		return bytes.Compare(sitemap[i][:], siteID[:]) >= 0
 	})
 }
 
 // Returns the index of an atom within the weave.
-// NOTE: current implementation is very naive in O(n), should look for better algo.
 func (l *RList) atomIndex(atomID AtomID) int {
 	for i, atom := range l.Weave {
 		if atom.ID == atomID {
@@ -132,8 +131,11 @@ func (l *RList) atomIndex(atomID AtomID) int {
 	return len(l.Weave)
 }
 
-func (l *RList) insertAtom(atom Atom) {
-	i := l.Cursor
+func (l *RList) insertAtomAtCursor(atom Atom) {
+	l.insertAtom(atom, int(l.Cursor))
+}
+
+func (l *RList) insertAtom(atom Atom, i int) {
 	l.Weave = append(l.Weave, Atom{})
 	copy(l.Weave[i+1:], l.Weave[i:])
 	l.Weave[i] = atom
@@ -146,7 +148,7 @@ func (l *RList) Fork() *RList {
 	}
 	newSiteID := uuidv1()
 	n := len(l.Sitemap)
-	i := l.siteIndex(newSiteID)
+	i := siteIndex(l.Sitemap, newSiteID)
 	if i < n {
 		panic("Not implemented yet: move yarns and renumber atoms")
 	} else {
@@ -171,13 +173,120 @@ func (l *RList) Fork() *RList {
 	return ll
 }
 
+func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
+	if len(s1) < len(s2) {
+		s1, s2 = s2, s1
+	}
+	s := make([]uuid.UUID, len(s1), len(s1)+len(s2))
+	copy(s, s1)
+	for _, site := range s2 {
+		i := sort.Search(len(s), func(i int) bool {
+			return bytes.Compare(s[i][:], site[:]) >= 0
+		})
+		if i < len(s) && s[i] == site {
+			continue
+		}
+		if i == len(s) {
+			s = append(s, site)
+		} else {
+			s = append(s, uuid.Nil)
+			copy(s[i+1:], s[i:])
+			s[i] = site
+		}
+	}
+	return s
+}
+
+func (a Atom) remapSite(m map[uint16]uint16) Atom {
+	return Atom{
+		ID:    a.ID.remapSite(m),
+		Cause: a.Cause.remapSite(m),
+		Value: a.Value,
+	}
+}
+
+func (id AtomID) remapSite(m map[uint16]uint16) AtomID {
+	newSite, ok := m[id.Site]
+	if !ok {
+		return id
+	}
+	return AtomID{
+		Site:      newSite,
+		Index:     id.Index,
+		Timestamp: id.Timestamp,
+	}
+}
+
+// Merge updates the current state with that of another remote list.
+func (l *RList) Merge(remote *RList) {
+	// 1. Merge sitemaps.
+	sitemap := mergeSitemaps(l.Sitemap, remote.Sitemap)
+	// 2. Compute site index remapping.
+	localRemap := make(map[uint16]uint16)
+	remoteRemap := make(map[uint16]uint16)
+	for i, site := range l.Sitemap {
+		j := siteIndex(sitemap, site)
+		if i != j {
+			localRemap[uint16(i)] = uint16(j)
+		}
+	}
+	for i, site := range remote.Sitemap {
+		j := siteIndex(sitemap, site)
+		if i != j {
+			remoteRemap[uint16(i)] = uint16(j)
+		}
+	}
+	// 3. Remap atoms from local.
+	yarns := make([][]Atom, len(sitemap))
+	for i, yarn := range l.Yarns {
+		ii, ok := localRemap[uint16(i)]
+		if !ok {
+			ii = uint16(i)
+		}
+		yarns[ii] = make([]Atom, len(yarn))
+		for j, atom := range yarn {
+			yarns[ii][j] = atom.remapSite(localRemap)
+		}
+	}
+	for i, atom := range l.Weave {
+		l.Weave[i] = atom.remapSite(localRemap)
+	}
+	// 4. Insert atoms from remote.
+	for i, yarn := range remote.Yarns {
+		ii, ok := remoteRemap[uint16(i)]
+		if !ok {
+			ii = uint16(i)
+		}
+		startIndex := len(yarns[ii])
+		if len(yarns[ii]) == 0 {
+			yarns[ii] = make([]Atom, len(yarn))
+		}
+		for j := startIndex; j < len(yarn); j++ {
+			atom := yarn[j].remapSite(remoteRemap)
+			yarns[ii][j] = atom
+			// BUG: perhaps parent was not yet inserted in weave, if it's from a remote yarn not yet integrated!
+			parentIndex := l.atomIndex(atom.Cause)
+			l.insertAtom(atom, parentIndex+1)
+			if parentIndex < int(l.Cursor) {
+				l.Cursor++
+			}
+		}
+	}
+	l.Sitemap = sitemap
+	l.Yarns = yarns
+	if l.Timestamp < remote.Timestamp {
+		l.Timestamp = remote.Timestamp
+	}
+	l.Timestamp++
+}
+
 func (l *RList) addAtom(value AtomValue) {
 	l.Timestamp++
 	if l.Timestamp == 0 {
 		// Overflow
 		panic("appending atom: reached limit of states")
 	}
-	i := l.siteIndex(l.SiteID)
+	i := siteIndex(l.Sitemap, l.SiteID)
 	atomID := AtomID{
 		Site:      uint16(i),
 		Index:     uint32(len(l.Yarns[i])),
@@ -192,7 +301,7 @@ func (l *RList) addAtom(value AtomValue) {
 		Cause: cause,
 		Value: value,
 	}
-	l.insertAtom(atom)
+	l.insertAtomAtCursor(atom)
 	l.Yarns[i] = append(l.Yarns[i], atom)
 }
 
@@ -217,24 +326,24 @@ func (l *RList) DeleteChar() {
 func (l *RList) AsString() string {
 	// Fill in chars with runes from weave. Deleted chars are represented with an invalid rune.
 	chars := make([]rune, len(l.Weave))
-    hasDeleted := false
+	hasDeleted := false
 	for i, atom := range l.Weave {
 		switch v := atom.Value.(type) {
 		case InsertChar:
 			chars[i] = v.Char
 		case Delete:
-            hasDeleted = true
+			hasDeleted = true
 			j := l.atomIndex(atom.Cause)
 			chars[i] = unicode.MaxRune + 1
 			chars[j] = unicode.MaxRune + 1
-        default:
-            panic(fmt.Sprintf("AsString: unexpected atom value type %T (%v)", atom.Value, atom.Value))
+		default:
+			panic(fmt.Sprintf("AsString: unexpected atom value type %T (%v)", atom.Value, atom.Value))
 		}
 	}
-    if !hasDeleted {
-        // Cheap optimization for case where there are no deletions.
-        return string(chars)
-    }
+	if !hasDeleted {
+		// Cheap optimization for case where there are no deletions.
+		return string(chars)
+	}
 	// Move chars to fill in holes of invalid runes.
 	deleted := 0
 	for i, ch := range chars {
@@ -246,6 +355,14 @@ func (l *RList) AsString() string {
 	}
 	chars = chars[:len(chars)-deleted]
 	return string(chars)
+}
+
+func toJSON(v interface{}) string {
+	bs, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return string(bs)
 }
 
 func main() {
@@ -275,4 +392,10 @@ func main() {
 	fmt.Println(l1.AsString())
 	fmt.Println(l2.AsString())
 	fmt.Println(l3.AsString())
+	// Merge site #2 into #1 --> CTRLALT
+	l1.Merge(l2)
+	fmt.Println(l1.AsString())
+	// Merge site #3 into #1 --> CTRLALTDEL
+	l1.Merge(l3)
+	fmt.Println(l1.AsString())
 }
