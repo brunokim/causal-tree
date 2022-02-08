@@ -1,4 +1,4 @@
-package main
+package crdt
 
 import (
 	"bytes"
@@ -459,64 +459,4 @@ func randomUUIDv1() uuid.UUID {
 		panic(fmt.Sprintf("creating UUIDv1: %v", err))
 	}
 	return id
-}
-
-func toJSON(v interface{}) string {
-	bs, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return string(bs)
-}
-
-// +------+
-// | Test |
-// +------+
-
-func main() {
-	//
-	//  C - T - R - L
-	//   `- M - D - A - L - T
-	//      |   |`- D - E - L
-	//      x   x
-	//
-	// Site #1: write CMD
-	l1 := NewRList()
-	l1.InsertChar('C')
-	l1.InsertChar('M')
-	l1.InsertChar('D')
-	// Create new sites
-	l2 := l1.Fork()
-	l3 := l2.Fork()
-	// Site #1: CMD --> CTRL
-	l1.DeleteChar()
-	l1.DeleteChar()
-	l1.InsertChar('T')
-	l1.InsertChar('R')
-	l1.InsertChar('L')
-	// Site #2: CMD --> CMDALT
-	l2.InsertChar('A')
-	l2.InsertChar('L')
-	l2.InsertChar('T')
-	// Site #3: CMD --> CMDDEL
-	l3.InsertChar('D')
-	l3.InsertChar('E')
-	l3.InsertChar('L')
-	// Print lists
-	fmt.Println(l1.AsString())
-	fmt.Println(l2.AsString())
-	fmt.Println(l3.AsString())
-	// Merge site #2 into #1 --> CTRLALT
-	l1.Merge(l2)
-	fmt.Println(l1.AsString())
-	// Merge site #3 into #1 --> CTRLALTDEL
-	l1.Merge(l3)
-	fmt.Println(l1.AsString())
-	// Merge site #2 into #3 --> CMDALTDEL
-	l3.Merge(l2)
-	fmt.Println(l3.AsString())
-	// Merge site #1 into #3 --> CTRLALTDEL
-	l3.Merge(l1)
-	fmt.Println(l3.AsString())
-	fmt.Println(toJSON(l3))
 }
