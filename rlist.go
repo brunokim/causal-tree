@@ -149,20 +149,23 @@ func (l *RList) Fork() *RList {
 		panic("fork: reached limit of sites")
 	}
 	newSiteID := uuidv1()
-	n := len(l.Sitemap)
 	i := siteIndex(l.Sitemap, newSiteID)
-	if i < n {
-		panic("Not implemented yet: move yarns and renumber atoms")
-	} else {
-		l.Yarns = append(l.Yarns, nil)
-		l.Sitemap = append(l.Sitemap, newSiteID)
-	}
+	// Insert empty yarn in local position.
+	l.Yarns = append(l.Yarns, nil)
+	copy(l.Yarns[i+1:], l.Yarns[i:])
+	l.Yarns[i] = nil
+	// Insert site ID into local sitemap.
+	l.Sitemap = append(l.Sitemap, uuid.Nil)
+	copy(l.Sitemap[i+1:], l.Sitemap[i:])
+	l.Sitemap[i] = newSiteID
+	// Copy data to remote list.
+	n := len(l.Sitemap)
 	l.Timestamp++
 	ll := &RList{
 		Weave:     make([]Atom, len(l.Weave)),
 		Cursor:    l.Cursor,
-		Yarns:     make([][]Atom, n+1),
-		Sitemap:   make([]uuid.UUID, n+1),
+		Yarns:     make([][]Atom, n),
+		Sitemap:   make([]uuid.UUID, n),
 		SiteID:    newSiteID,
 		Timestamp: l.Timestamp,
 	}

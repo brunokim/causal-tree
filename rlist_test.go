@@ -16,14 +16,25 @@ func toJSON(v interface{}) string {
 	return string(bs)
 }
 
-func TestRList(t *testing.T) {
-	defer func(oldUUIDv1 func() uuid.UUID) { uuidv1 = oldUUIDv1 }(uuidv1)
-	var numUUID int
+func setupUUIDs(uuids []uuid.UUID) func() {
+	var i int
+	oldUUIDv1 := uuidv1
+	teardown := func() { uuidv1 = oldUUIDv1 }
 	uuidv1 = func() uuid.UUID {
-		numUUID++
-		// Random UUIDv1, except for incremental time bits.
-		return uuid.MustParse(fmt.Sprintf("0000%04x-8891-11ec-a04c-67855c00505b", numUUID))
+		uuid := uuids[i]
+		i++
+		return uuid
 	}
+	return teardown
+}
+
+func TestRList(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
 
 	//
 	//  C - T - R - L
@@ -83,4 +94,64 @@ func TestRList(t *testing.T) {
 		t.Errorf("3: l3 = %q, want %q", s3, "CTRLALTDEL")
 	}
 	fmt.Println(toJSON(l3))
+}
+
+func TestBackwardsClock(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		// UUIDs don't progress with increasing timestamp: 1,5,2,4,3
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000005-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000004-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	// C - O - O - P
+	//      `- D - E - . - I - O
+	//         |   |
+	//         x   x
+	// Create sites #1, #2, #3: C, CODE
+	l1 := NewRList()
+	l1.InsertChar('C')
+	l2 := l1.Fork()
+	l2.InsertChar('O')
+	l2.InsertChar('D')
+	l2.InsertChar('E')
+	l3 := l2.Fork()
+	// Create site #4 from #3: CODE --> CODE.IO
+	l4 := l3.Fork()
+	l4.InsertChar('.')
+	l4.InsertChar('I')
+	l4.InsertChar('O')
+	if s4 := l4.AsString(); s4 != "CODE.IO" {
+		t.Errorf("2: l4 = %q, want %q", s4, "CODE.IO")
+	}
+	// Site #3: CODE --> COOP
+	l3.DeleteChar()
+	l3.DeleteChar()
+	l3.InsertChar('O')
+	l3.InsertChar('P')
+	if s3 := l3.AsString(); s3 != "COOP" {
+		t.Errorf("3: l3 = %q, want %q", s3, "COOP")
+	}
+	// Copy l3 into l5
+	l5 := l3.Fork()
+	// Merge site #4 into #3
+	l3.Merge(l4)
+	if s3 := l3.AsString(); s3 != "COOP.IO" {
+		t.Errorf("4: l3 = %q, want %q", s3, "COOP.IO")
+	}
+	// Merge site #5 (copy of #1 before merge) into #4
+	l4.Merge(l5)
+	if s4 := l4.AsString(); s4 != "COOP.IO" {
+		t.Errorf("5: l4 = %q, want %q", s4, "COOP.IO")
+	}
+	// Ensure other streams are not changed.
+	if s1 := l1.AsString(); s1 != "C" {
+		t.Errorf("6: l1 = %q, want %q", s1, "C")
+	}
+	if s2 := l2.AsString(); s2 != "CODE" {
+		t.Errorf("7: l2 = %q, want %q", s2, "CODE")
+	}
 }
