@@ -206,7 +206,27 @@ func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
 	return s
 }
 
-func (a Atom) remapSite(m map[uint16]uint16) Atom {
+// -----
+
+type indexMap map[int]int
+
+func (m indexMap) set(i, j int) {
+	if i != j {
+		m[i] = j
+	}
+}
+
+func (m indexMap) get(i int) int {
+	j, ok := m[i]
+	if !ok {
+		return i
+	}
+	return j
+}
+
+// -----
+
+func (a Atom) remapSite(m indexMap) Atom {
 	return Atom{
 		ID:    a.ID.remapSite(m),
 		Cause: a.Cause.remapSite(m),
@@ -214,13 +234,9 @@ func (a Atom) remapSite(m map[uint16]uint16) Atom {
 	}
 }
 
-func (id AtomID) remapSite(m map[uint16]uint16) AtomID {
-	newSite, ok := m[id.Site]
-	if !ok {
-		return id
-	}
+func (id AtomID) remapSite(m indexMap) AtomID {
 	return AtomID{
-		Site:      newSite,
+		Site:      uint16(m.get(int(id.Site))),
 		Index:     id.Index,
 		Timestamp: id.Timestamp,
 	}
@@ -231,30 +247,21 @@ func (l *RList) Merge(remote *RList) {
 	// 1. Merge sitemaps.
 	sitemap := mergeSitemaps(l.Sitemap, remote.Sitemap)
 	// 2. Compute site index remapping.
-	localRemap := make(map[uint16]uint16)
-	remoteRemap := make(map[uint16]uint16)
+	localRemap := make(indexMap)
+	remoteRemap := make(indexMap)
 	for i, site := range l.Sitemap {
-		j := siteIndex(sitemap, site)
-		if i != j {
-			localRemap[uint16(i)] = uint16(j)
-		}
+		localRemap.set(i, siteIndex(sitemap, site))
 	}
 	for i, site := range remote.Sitemap {
-		j := siteIndex(sitemap, site)
-		if i != j {
-			remoteRemap[uint16(i)] = uint16(j)
-		}
+		remoteRemap.set(i, siteIndex(sitemap, site))
 	}
 	// 3. Remap atoms from local.
 	yarns := make([][]Atom, len(sitemap))
 	for i, yarn := range l.Yarns {
-		ii, ok := localRemap[uint16(i)]
-		if !ok {
-			ii = uint16(i)
-		}
-		yarns[ii] = make([]Atom, len(yarn))
+		i := localRemap.get(i)
+		yarns[i] = make([]Atom, len(yarn))
 		for j, atom := range yarn {
-			yarns[ii][j] = atom.remapSite(localRemap)
+			yarns[i][j] = atom.remapSite(localRemap)
 		}
 	}
 	for i, atom := range l.Weave {
@@ -262,18 +269,15 @@ func (l *RList) Merge(remote *RList) {
 	}
 	// 4. Insert atoms from remote.
 	for i, yarn := range remote.Yarns {
-		ii, ok := remoteRemap[uint16(i)]
-		if !ok {
-			ii = uint16(i)
-		}
-		startIndex := len(yarns[ii])
-		if len(yarn) > len(yarns[ii]) {
+		i := remoteRemap.get(i)
+		startIndex := len(yarns[i])
+		if len(yarn) > len(yarns[i]) {
 			// Grow yarn to accomodate remote atoms.
-			yarns[ii] = append(yarns[ii], make([]Atom, len(yarn)-len(yarns[ii]))...)
+			yarns[i] = append(yarns[i], make([]Atom, len(yarn)-len(yarns[i]))...)
 		}
 		for j := startIndex; j < len(yarn); j++ {
 			atom := yarn[j].remapSite(remoteRemap)
-			yarns[ii][j] = atom
+			yarns[i][j] = atom
 			// Insert atom in local weave.
 			// BUG: parent may not yet be inserted in weave, if it's from a remote yarn not yet integrated.
 			parentIndex := l.atomIndex(atom.Cause)
