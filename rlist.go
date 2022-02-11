@@ -104,6 +104,18 @@ func (l *RList) insertAtom(atom Atom, i int) {
 	l.Weave[i] = atom
 }
 
+// +--------+
+// | String |
+// +--------+
+
+func (id AtomID) String() string {
+	return fmt.Sprintf("S%d@T%02d", id.Site, id.Timestamp)
+}
+
+func (a Atom) String() string {
+	return fmt.Sprintf("Atom(%v,%v,%v)", a.ID, a.Cause, a.Value)
+}
+
 // +----------+
 // | Ordering |
 // +----------+
@@ -242,7 +254,57 @@ func (id AtomID) remapSite(m indexMap) AtomID {
 	}
 }
 
+// -----
+
+func mergeWeaves(w1, w2 []Atom) []Atom {
+	var i, j int
+	var weave []Atom
+	for i < len(w1) && j < len(w2) {
+		a1, a2 := w1[i], w2[j]
+		fmt.Printf("a1: %v (%d), a2: %v (%d), weave: %v\n", a1, i, a2, j, weave)
+		if a1 == a2 {
+			// Atoms are equal, append it to the weave.
+			weave = append(weave, a1)
+			i++
+			j++
+			continue
+		}
+		if a1.ID.Site == a2.ID.Site {
+			// Atoms are from the same site and can be compared by timestamp.
+			// Insert younger one (larger timestamp) in weave.
+			if a1.ID.Timestamp < a2.ID.Timestamp {
+				weave = append(weave, a2)
+				j++
+			} else {
+				weave = append(weave, a1)
+				i++
+			}
+		} else {
+			// Atoms are concurrent; append their causal blocks according to their heads' order.
+			n1, _ := causalBlock(w1, i)
+			n2, _ := causalBlock(w2, j)
+			if a1.Compare(a2) >= 0 {
+				weave = append(weave, w1[i:n1]...)
+				weave = append(weave, w2[j:n2]...)
+			} else {
+				weave = append(weave, w2[j:n2]...)
+				weave = append(weave, w1[i:n1]...)
+			}
+			i, j = n1, n2
+		}
+	}
+	if i < len(w1) {
+		weave = append(weave, w1[i:]...)
+	}
+	if j < len(w2) {
+		weave = append(weave, w2[j:]...)
+	}
+	fmt.Printf("weave: %v\n", weave)
+	return weave
+}
+
 // Merge updates the current state with that of another remote list.
+// Note that merge does not move the cursor.
 func (l *RList) Merge(remote *RList) {
 	// 1. Merge sitemaps.
 	sitemap := mergeSitemaps(l.Sitemap, remote.Sitemap)
@@ -267,7 +329,8 @@ func (l *RList) Merge(remote *RList) {
 	for i, atom := range l.Weave {
 		l.Weave[i] = atom.remapSite(localRemap)
 	}
-	// 4. Insert atoms from remote.
+	cursorID := l.Weave[l.Cursor-1].ID
+	// 4. Merge yarns.
 	for i, yarn := range remote.Yarns {
 		i := remoteRemap.get(i)
 		startIndex := len(yarns[i])
@@ -278,32 +341,21 @@ func (l *RList) Merge(remote *RList) {
 		for j := startIndex; j < len(yarn); j++ {
 			atom := yarn[j].remapSite(remoteRemap)
 			yarns[i][j] = atom
-			// Insert atom in local weave.
-			// BUG: parent may not yet be inserted in weave, if it's from a remote yarn not yet integrated.
-			parentIndex := l.atomIndex(atom.Cause)
-			blockEnd, siblingIndices := l.causalBlock(parentIndex)
-			insertionIndex := blockEnd
-			// Insert atom in reversed order compared to siblings.
-			// NOTE: not necessary to use binary search here, because iterating over siblings is strictly faster than it takes
-			// to list them.
-			for _, siblingIndex := range siblingIndices {
-				sibling := l.Weave[siblingIndex]
-				if atom.Compare(sibling) >= 0 {
-					insertionIndex = siblingIndex
-					break
-				}
-			}
-			l.insertAtom(atom, insertionIndex)
-			if parentIndex < int(l.Cursor) {
-				l.Cursor++
-			}
 		}
 	}
-	l.Sitemap = sitemap
+	// 5. Merge weaves.
+	remoteWeave := make([]Atom, len(remote.Weave))
+	for i, atom := range remote.Weave {
+		remoteWeave[i] = atom.remapSite(remoteRemap)
+	}
+	l.Weave = mergeWeaves(l.Weave, remoteWeave)
+	//
 	l.Yarns = yarns
+	l.Sitemap = sitemap
 	if l.Timestamp < remote.Timestamp {
 		l.Timestamp = remote.Timestamp
 	}
+	l.Cursor = uint32(l.atomIndex(cursorID) + 1)
 	l.Timestamp++
 }
 
@@ -311,10 +363,14 @@ func (l *RList) Merge(remote *RList) {
 //
 // The causal block is defined as the contiguous range containing all of head's descendants.
 func (l *RList) causalBlock(headIndex int) (int, []int) {
-	head := l.Weave[headIndex]
+	return causalBlock(l.Weave, headIndex)
+}
+
+func causalBlock(weave []Atom, headIndex int) (int, []int) {
+	head := weave[headIndex]
 	var childIndices []int
-	for i := headIndex + 1; i < len(l.Weave); i++ {
-		atom := l.Weave[i]
+	for i := headIndex + 1; i < len(weave); i++ {
+		atom := weave[i]
 		if atom.Cause == head.ID {
 			childIndices = append(childIndices, i)
 			continue
@@ -326,7 +382,7 @@ func (l *RList) causalBlock(headIndex int) (int, []int) {
 			return i, childIndices
 		}
 	}
-	return len(l.Weave), childIndices
+	return len(weave), childIndices
 }
 
 // +------------+
@@ -376,6 +432,7 @@ func (v InsertChar) AtomPriority() int { return 0 }
 func (v InsertChar) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"insert %c"`, v.Char)), nil
 }
+func (v InsertChar) String() string { return string([]rune{v.Char}) }
 
 // InsertCharAfter inserts a char after the cursor position.
 func (l *RList) InsertChar(ch rune) {
@@ -394,6 +451,7 @@ func (v Delete) AtomPriority() int { return 100 }
 func (v Delete) MarshalJSON() ([]byte, error) {
 	return []byte(`"delete"`), nil
 }
+func (v Delete) String() string { return "⌫ " }
 
 // DeleteChar deletes the char before the cursor position.
 func (l *RList) DeleteChar() {

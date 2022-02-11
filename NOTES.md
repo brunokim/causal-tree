@@ -79,3 +79,147 @@ Site #1 + #2 + #3:
 4. therefore, head necessarily has a higher timestamp than parent
 5. meanwhile, every atom in head's causal block will necessarily have a higher timestamp than head
 6. thus: the first atom whose parent has a lower timestamp than head is past the end of the causal block
+
+## Merging weaves
+
+### Merging #2 into #1
+
+    Iteration 0: i == j
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+        ^i
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+        ^j
+
+    Iteration 1-3: j predates i (both have same site)
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                 ^i       ^i       ^i
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                 ^j
+
+    Iteration 4: i == j
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                            ^i
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                 ^j
+
+    Iteration 5: j predates i
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                     ^i
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                          ^j
+
+    Iteration 6: i == j
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                              ^i
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                          ^j
+
+    Iteration 7: concurrent change, sort their causal blocks
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                                       ^i-----
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                   ^j-----------------------
+
+    Iteration 8: end
+    
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]  [2|A 6]  [2|L 7]  [2|T 8]
+                                                                                                         ^i
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                                            ^j
+
+### Merging #3 into #2
+
+    Iteration 0-2: i == j
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+        ^i       ^i       ^i
+
+    #3: [1|C 1]  [1|M 2]  [1|D 3]  [3|D 6]  [3|E 7]  [3|L 8]
+        ^j       ^j       ^j
+
+    Iteration 3: concurrent change, sort their causal blocks
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                   ^i-----------------------
+
+    #3: [1|C 1]  [1|M 2]  [1|D 3]  [3|D 6]  [3|E 7]  [3|L 8]
+                                   ^j-----------------------
+
+    Iteration 4: end
+
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]  [3|D 6]  [3|E 7]  [3|L 8]
+                                                                                       ^i
+
+    #3: [1|C 1]  [1|M 2]  [1|D 3]  [3|D 6]  [3|E 7]  [3|L 8]
+                                                            ^j
+### Merging #1 into #2
+
+    Iteration 0: i == j
+    
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+        ^i
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+        ^j
+
+    Iteration 1: i predates j, insert remote causal block
+    
+    #2: [1|C 1]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                 ^i
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                 ^j-----------------------
+
+    Iteration 2: i == j
+    
+    #2: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                            ^i
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                            ^j
+
+    Iteration 3: i predates j, insert remote causal block
+    
+    #2: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                                     ^i
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                     ^j-----
+
+    Iteration 4: i == j
+    
+    #2: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                                              ^i
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                              ^j
+
+    Iteration 5: concurrent change, sort causal blocks
+    
+    #2: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [2|A 6]  [2|L 7]  [2|T 8]
+                                                                       ^i-----------------------
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                                       ^j-----
+
+    Iteration 6: end
+    
+    #2: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]  [2|A 6]  [2|L 7]  [2|T 8]
+                                                                                                         ^i
+
+    #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
+                                                                              ^j
+

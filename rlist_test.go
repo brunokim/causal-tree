@@ -86,12 +86,12 @@ func TestRList(t *testing.T) {
 	// Merge site #2 into #3 --> CMDALTDEL
 	l3.Merge(l2)
 	if s3 := l3.AsString(); s3 != "CMDALTDEL" {
-		t.Errorf("3: l3 = %q, want %q", s3, "CMDALTDEL")
+		t.Errorf("6: l3 = %q, want %q", s3, "CMDALTDEL")
 	}
 	// Merge site #1 into #3 --> CTRLALTDEL
 	l3.Merge(l1)
 	if s3 := l3.AsString(); s3 != "CTRLALTDEL" {
-		t.Errorf("3: l3 = %q, want %q", s3, "CTRLALTDEL")
+		t.Errorf("7: l3 = %q, want %q", s3, "CTRLALTDEL")
 	}
 	fmt.Println(toJSON(l3))
 }
@@ -153,5 +153,48 @@ func TestBackwardsClock(t *testing.T) {
 	}
 	if s2 := l2.AsString(); s2 != "CODE" {
 		t.Errorf("7: l2 = %q, want %q", s2, "CODE")
+	}
+}
+
+func TestUnknownRemoteYarn(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	// Site #1: A - B -----------------------.- *
+	// Site #2:      `- C - D -------.- G - H
+	// Site #3:              `- E - F
+	// Create site #1
+	l1 := NewRList()
+	l1.InsertChar('A')
+	l1.InsertChar('B')
+	// Create site #2 from #1: AB --> ABCD
+	l2 := l1.Fork()
+	l2.InsertChar('C')
+	l2.InsertChar('D')
+	if s2 := l2.AsString(); s2 != "ABCD" {
+		t.Errorf("2: l2 = %q, want %q", s2, "ABCD")
+	}
+	// Site #3: ABCD --> ABCDEF
+	l3 := l2.Fork()
+	l3.InsertChar('E')
+	l3.InsertChar('F')
+	if s3 := l3.AsString(); s3 != "ABCDEF" {
+		t.Errorf("3: l3 = %q, want %q", s3, "ABCDEF")
+	}
+	// Merge site #3 into #2: ABCDEF --> ABCDEFGH
+	l2.Merge(l3)
+	l2.InsertChar('G')
+	l2.InsertChar('H')
+	if s2 := l2.AsString(); s2 != "ABCDEFGH" {
+		t.Errorf("4: l2 = %q, want %q", s2, "ABCDEFGH")
+	}
+	// Merge site #2 into #1
+	l1.Merge(l2)
+	if s1 := l1.AsString(); s1 != "ABCDEFGH" {
+		t.Errorf("5: l1 = %q, want %q", s1, "ABCDEFGH")
 	}
 }
