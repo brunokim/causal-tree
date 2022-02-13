@@ -28,6 +28,52 @@ func setupUUIDs(uuids []uuid.UUID) func() {
 	return teardown
 }
 
+// -----
+
+type instructionType int
+
+const (
+	insertChar instructionType = iota
+	deleteChar
+	fork
+	merge
+	check
+)
+
+type instruction struct {
+	op            instructionType
+	local, remote int
+	char          rune
+	str           string
+}
+
+func runInstructions(instrs []instruction) ([]*RList, error) {
+	lists := []*RList{NewRList()}
+	for i, instr := range instrs {
+		list := lists[instr.local]
+		switch instr.op {
+		case insertChar:
+			list.InsertChar(instr.char)
+		case deleteChar:
+			list.DeleteChar()
+		case fork:
+			if instr.remote != len(lists) {
+				panic(fmt.Sprintf("Fork: expecting remote index %d, got %d", instr.remote, len(lists)))
+			}
+			lists = append(lists, list.Fork())
+		case merge:
+			list.Merge(lists[instr.remote])
+		case check:
+			if s := list.AsString(); s != instr.str {
+				return lists, fmt.Errorf("%d: got list[%d] = %q, want %q", i, instr.local, s, instr.str)
+			}
+		}
+	}
+	return lists, nil
+}
+
+// -----
+
 func TestRList(t *testing.T) {
 	teardown := setupUUIDs([]uuid.UUID{
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
@@ -42,58 +88,49 @@ func TestRList(t *testing.T) {
 	//      |   |`- D - E - L
 	//      x   x
 	//
-	// Site #1: write CMD
-	l1 := NewRList()
-	l1.InsertChar('C')
-	l1.InsertChar('M')
-	l1.InsertChar('D')
-	// Create new sites
-	l2 := l1.Fork()
-	l3 := l2.Fork()
-	// Site #1: CMD --> CTRL
-	l1.DeleteChar()
-	l1.DeleteChar()
-	l1.InsertChar('T')
-	l1.InsertChar('R')
-	l1.InsertChar('L')
-	if s1 := l1.AsString(); s1 != "CTRL" {
-		t.Errorf("1: l1 = %q, want %q", s1, "CTRL")
+	instrs := []instruction{
+		// Site #0: write CMD
+		{op: insertChar, local: 0, char: 'C'},
+		{op: insertChar, local: 0, char: 'M'},
+		{op: insertChar, local: 0, char: 'D'},
+		// Create new sites
+		{op: fork, local: 0, remote: 1},
+		{op: fork, local: 1, remote: 2},
+		// Site #0: CMD --> CTRL
+		{op: deleteChar, local: 0},
+		{op: deleteChar, local: 0},
+		{op: insertChar, local: 0, char: 'T'},
+		{op: insertChar, local: 0, char: 'R'},
+		{op: insertChar, local: 0, char: 'L'},
+		{op: check, local: 0, str: "CTRL"},
+		// Site #1: CMD --> CMDALT
+		{op: insertChar, local: 1, char: 'A'},
+		{op: insertChar, local: 1, char: 'L'},
+		{op: insertChar, local: 1, char: 'T'},
+		{op: check, local: 1, str: "CMDALT"},
+		// Site #2: CMD --> CMDDEL
+		{op: insertChar, local: 2, char: 'D'},
+		{op: insertChar, local: 2, char: 'E'},
+		{op: insertChar, local: 2, char: 'L'},
+		{op: check, local: 2, str: "CMDDEL"},
+		// Merge site #1 into #0 --> CTRLALT
+		{op: merge, local: 0, remote: 1},
+		{op: check, local: 0, str: "CTRLALT"},
+		// Merge site #2 into #0 --> CTRLALTDEL
+		{op: merge, local: 0, remote: 2},
+		{op: check, local: 0, str: "CTRLALTDEL"},
+		// Merge site #1 into #2 --> CMDALTDEL
+		{op: merge, local: 2, remote: 1},
+		{op: check, local: 2, str: "CMDALTDEL"},
+		// Merge site #0 into #2 --> CTRLALTDEL
+		{op: merge, local: 2, remote: 0},
+		{op: check, local: 2, str: "CTRLALTDEL"},
 	}
-	// Site #2: CMD --> CMDALT
-	l2.InsertChar('A')
-	l2.InsertChar('L')
-	l2.InsertChar('T')
-	if s2 := l2.AsString(); s2 != "CMDALT" {
-		t.Errorf("2: l2 = %q, want %q", s2, "CMDALT")
+	lists, err := runInstructions(instrs)
+	if err != nil {
+		t.Error(err)
 	}
-	// Site #3: CMD --> CMDDEL
-	l3.InsertChar('D')
-	l3.InsertChar('E')
-	l3.InsertChar('L')
-	if s3 := l3.AsString(); s3 != "CMDDEL" {
-		t.Errorf("3: l3 = %q, want %q", s3, "CMDDEL")
-	}
-	// Merge site #2 into #1 --> CTRLALT
-	l1.Merge(l2)
-	if s1 := l1.AsString(); s1 != "CTRLALT" {
-		t.Errorf("4: l1 = %q, want %q", s1, "CTRLALT")
-	}
-	// Merge site #3 into #1 --> CTRLALTDEL
-	l1.Merge(l3)
-	if s1 := l1.AsString(); s1 != "CTRLALTDEL" {
-		t.Errorf("5: l1 = %q, want %q", s1, "CTRLALTDEL")
-	}
-	// Merge site #2 into #3 --> CMDALTDEL
-	l3.Merge(l2)
-	if s3 := l3.AsString(); s3 != "CMDALTDEL" {
-		t.Errorf("6: l3 = %q, want %q", s3, "CMDALTDEL")
-	}
-	// Merge site #1 into #3 --> CTRLALTDEL
-	l3.Merge(l1)
-	if s3 := l3.AsString(); s3 != "CTRLALTDEL" {
-		t.Errorf("7: l3 = %q, want %q", s3, "CTRLALTDEL")
-	}
-	fmt.Println(toJSON(l3))
+	fmt.Println(toJSON(lists[2]))
 }
 
 func TestBackwardsClock(t *testing.T) {
