@@ -38,8 +38,9 @@ type AtomID struct {
 	// Site is the index in the sitemap of the site that created an atom.
 	Site uint16
 	// Index is the order of creation of this atom in the given site.
+	// Or: the atom index on its site's yarn.
 	Index uint32
-	// Timestamp is the Lamport timestamp of the site when the atom was created.
+	// Timestamp is the site's Lamport timestamp when the atom was created.
 	Timestamp uint32
 }
 
@@ -51,6 +52,8 @@ type AtomValue interface {
 }
 
 // RList is a replicated list data structure.
+//
+// This data structure allows for 64K sites and 4G atoms in total.
 type RList struct {
 	// Weave is the flat representation of a causal tree.
 	Weave []Atom
@@ -76,7 +79,7 @@ func NewRList() *RList {
 		Yarns:     [][]Atom{nil},
 		Sitemap:   []uuid.UUID{siteID},
 		SiteID:    siteID,
-		Timestamp: 1,
+		Timestamp: 1, // Timestamp 0 is considered invalid.
 	}
 }
 
@@ -173,7 +176,7 @@ func (l *RList) Fork() *RList {
 	// Copy data to remote list.
 	n := len(l.Sitemap)
 	l.Timestamp++
-	ll := &RList{
+	remote := &RList{
 		Weave:     make([]Atom, len(l.Weave)),
 		Cursor:    l.Cursor,
 		Yarns:     make([][]Atom, n),
@@ -181,13 +184,14 @@ func (l *RList) Fork() *RList {
 		SiteID:    newSiteID,
 		Timestamp: l.Timestamp,
 	}
-	copy(ll.Weave, l.Weave)
+	copy(remote.Weave, l.Weave)
 	for i, yarn := range l.Yarns {
-		ll.Yarns[i] = make([]Atom, len(yarn))
-		copy(ll.Yarns[i], yarn)
+		remote.Yarns[i] = make([]Atom, len(yarn))
+		copy(remote.Yarns[i], yarn)
 	}
-	copy(ll.Sitemap, l.Sitemap)
-	return ll
+	// BUG: need to remap atoms if new site index is != n
+	copy(remote.Sitemap, l.Sitemap)
+	return remote
 }
 
 // +-------+
@@ -207,19 +211,18 @@ func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
 		if i < len(s) && s[i] == site {
 			continue
 		}
-		if i == len(s) {
-			s = append(s, site)
-		} else {
-			s = append(s, uuid.Nil)
-			copy(s[i+1:], s[i:])
-			s[i] = site
-		}
+		s = append(s, uuid.Nil)
+		copy(s[i+1:], s[i:])
+		s[i] = site
 	}
 	return s
 }
 
 // -----
 
+// Map storing conversion between indices.
+// Conversion from an index to itself are not stored.
+// Queries for an index that was not inserted or stored return the index itself.
 type indexMap map[int]int
 
 func (m indexMap) set(i, j int) {
