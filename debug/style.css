@@ -1,0 +1,20 @@
+.active {
+    background-color: #ff6;
+}
+
+.state {
+    display: flex;
+    align-items: flex-start;
+    gap: 5em;
+}
+
+.container {
+    display:flex;
+    align-items: first baseline;
+    gap: 1em;
+}
+
+.hidden {
+    display: none;
+}
+
