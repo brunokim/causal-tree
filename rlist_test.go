@@ -30,42 +30,60 @@ func setupUUIDs(uuids []uuid.UUID) func() {
 
 // -----
 
-type instructionType int
+// Tests are structured as a sequence of operations on a list of lists.
+//
+// This indirection allows us to perform some actions for every mutation, like
+// dumping their internals to a file. Hopefully, it should also allow us to
+// somehow fuzz list manipulation.
+//
+// Operations are:
+//
+// insertChar <local> <char> -- insert a char at cursor on list 'local'.
+// deleteChar <local>        -- delete the char at cursor on list 'local'.
+// fork <local> <remote>     -- fork list 'local' into list 'remote'.
+// merge <local> <remote>    -- merge list 'remote' into list 'local'.
+// check <local> <str>       -- check that the contents of 'local' spell 'str'.
+//
+// Lists are referred by their order of creation, NOT by their sitemap index.
+// The fork operation requires specifying the correct index, even if it could be
+// inferred from the number of already created lists, just to improve readability.
+
+type operationType int
 
 const (
-	insertChar instructionType = iota
+	insertChar operationType = iota
 	deleteChar
 	fork
 	merge
 	check
 )
 
-type instruction struct {
-	op            instructionType
+type operation struct {
+	op            operationType
 	local, remote int
 	char          rune
 	str           string
 }
 
-func runInstructions(instrs []instruction) ([]*RList, error) {
+func runOperations(ops []operation) ([]*RList, error) {
 	lists := []*RList{NewRList()}
-	for i, instr := range instrs {
-		list := lists[instr.local]
-		switch instr.op {
+	for i, op := range ops {
+		list := lists[op.local]
+		switch op.op {
 		case insertChar:
-			list.InsertChar(instr.char)
+			list.InsertChar(op.char)
 		case deleteChar:
 			list.DeleteChar()
 		case fork:
-			if instr.remote != len(lists) {
-				panic(fmt.Sprintf("Fork: expecting remote index %d, got %d", instr.remote, len(lists)))
+			if op.remote != len(lists) {
+				panic(fmt.Sprintf("Fork: expecting remote index %d, got %d", op.remote, len(lists)))
 			}
 			lists = append(lists, list.Fork())
 		case merge:
-			list.Merge(lists[instr.remote])
+			list.Merge(lists[op.remote])
 		case check:
-			if s := list.AsString(); s != instr.str {
-				return lists, fmt.Errorf("%d: got list[%d] = %q, want %q", i, instr.local, s, instr.str)
+			if s := list.AsString(); s != op.str {
+				return lists, fmt.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
 			}
 		}
 	}
@@ -88,7 +106,7 @@ func TestRList(t *testing.T) {
 	//      |   |`- D - E - L
 	//      x   x
 	//
-	instrs := []instruction{
+	ops := []operation{
 		// Site #0: write CMD
 		{op: insertChar, local: 0, char: 'C'},
 		{op: insertChar, local: 0, char: 'M'},
@@ -126,7 +144,7 @@ func TestRList(t *testing.T) {
 		{op: merge, local: 2, remote: 0},
 		{op: check, local: 2, str: "CTRLALTDEL"},
 	}
-	lists, err := runInstructions(instrs)
+	lists, err := runOperations(ops)
 	if err != nil {
 		t.Error(err)
 	}
@@ -148,48 +166,41 @@ func TestBackwardsClock(t *testing.T) {
 	//      `- D - E - . - I - O
 	//         |   |
 	//         x   x
-	// Create sites #1, #2, #3: C, CODE
-	l1 := NewRList()
-	l1.InsertChar('C')
-	l2 := l1.Fork()
-	l2.InsertChar('O')
-	l2.InsertChar('D')
-	l2.InsertChar('E')
-	l3 := l2.Fork()
-	// Create site #4 from #3: CODE --> CODE.IO
-	l4 := l3.Fork()
-	l4.InsertChar('.')
-	l4.InsertChar('I')
-	l4.InsertChar('O')
-	if s4 := l4.AsString(); s4 != "CODE.IO" {
-		t.Errorf("2: l4 = %q, want %q", s4, "CODE.IO")
+	ops := []operation{
+		// Create sites #0, #1, #2: C, CODE
+		{op: insertChar, local: 0, char: 'C'},
+		{op: fork, local: 0, remote: 1},
+		{op: insertChar, local: 1, char: 'O'},
+		{op: insertChar, local: 1, char: 'D'},
+		{op: insertChar, local: 1, char: 'E'},
+		{op: fork, local: 1, remote: 2},
+		// Create site #3 from #2: CODE --> CODE.IO
+		{op: fork, local: 2, remote: 3},
+		{op: insertChar, local: 3, char: '.'},
+		{op: insertChar, local: 3, char: 'I'},
+		{op: insertChar, local: 3, char: 'O'},
+		{op: check, local: 3, str: "CODE.IO"},
+		// Site #2: CODE --> COOP
+		{op: deleteChar, local: 2},
+		{op: deleteChar, local: 2},
+		{op: insertChar, local: 2, char: 'O'},
+		{op: insertChar, local: 2, char: 'P'},
+		{op: check, local: 2, str: "COOP"},
+		// Copy l2 into l4
+		{op: fork, local: 2, remote: 4},
+		// Merge site #3 into #2
+		{op: merge, local: 2, remote: 3},
+		{op: check, local: 2, str: "COOP.IO"},
+		// Merge site #4 (copy of #2 before merge) into #3
+		{op: merge, local: 3, remote: 4},
+		{op: check, local: 3, str: "COOP.IO"},
+		// Ensure other streams are not changed.
+		{op: check, local: 0, str: "C"},
+		{op: check, local: 1, str: "CODE"},
 	}
-	// Site #3: CODE --> COOP
-	l3.DeleteChar()
-	l3.DeleteChar()
-	l3.InsertChar('O')
-	l3.InsertChar('P')
-	if s3 := l3.AsString(); s3 != "COOP" {
-		t.Errorf("3: l3 = %q, want %q", s3, "COOP")
-	}
-	// Copy l3 into l5
-	l5 := l3.Fork()
-	// Merge site #4 into #3
-	l3.Merge(l4)
-	if s3 := l3.AsString(); s3 != "COOP.IO" {
-		t.Errorf("4: l3 = %q, want %q", s3, "COOP.IO")
-	}
-	// Merge site #5 (copy of #1 before merge) into #4
-	l4.Merge(l5)
-	if s4 := l4.AsString(); s4 != "COOP.IO" {
-		t.Errorf("5: l4 = %q, want %q", s4, "COOP.IO")
-	}
-	// Ensure other streams are not changed.
-	if s1 := l1.AsString(); s1 != "C" {
-		t.Errorf("6: l1 = %q, want %q", s1, "C")
-	}
-	if s2 := l2.AsString(); s2 != "CODE" {
-		t.Errorf("7: l2 = %q, want %q", s2, "CODE")
+	_, err := runOperations(ops)
+	if err != nil {
+		t.Error(err)
 	}
 }
 
@@ -201,37 +212,34 @@ func TestUnknownRemoteYarn(t *testing.T) {
 	})
 	defer teardown()
 
-	// Site #1: A - B -----------------------.- *
-	// Site #2:      `- C - D -------.- G - H
-	// Site #3:              `- E - F
-	// Create site #1
-	l1 := NewRList()
-	l1.InsertChar('A')
-	l1.InsertChar('B')
-	// Create site #2 from #1: AB --> ABCD
-	l2 := l1.Fork()
-	l2.InsertChar('C')
-	l2.InsertChar('D')
-	if s2 := l2.AsString(); s2 != "ABCD" {
-		t.Errorf("2: l2 = %q, want %q", s2, "ABCD")
+	// Site #0: A - B -----------------------.- *
+	// Site #1:      `- C - D -------.- G - H'
+	// Site #2:              `- E - F'
+	ops := []operation{
+		// Create site #0: AB
+		{op: insertChar, local: 0, char: 'A'},
+		{op: insertChar, local: 0, char: 'B'},
+		// Create site #1 from #0: AB --> ABCD
+		{op: fork, local: 0, remote: 1},
+		{op: insertChar, local: 1, char: 'C'},
+		{op: insertChar, local: 1, char: 'D'},
+		{op: check, local: 1, str: "ABCD"},
+		// Site #2: ABCD --> ABCDEF
+		{op: fork, local: 1, remote: 2},
+		{op: insertChar, local: 2, char: 'E'},
+		{op: insertChar, local: 2, char: 'F'},
+		{op: check, local: 2, str: "ABCDEF"},
+		// Merge site #2 into #1: ABCDEF --> ABCDEFGH
+		{op: merge, local: 1, remote: 2},
+		{op: insertChar, local: 1, char: 'G'},
+		{op: insertChar, local: 1, char: 'H'},
+		{op: check, local: 1, str: "ABCDEFGH"},
+		// Merge site #1 into #0
+		{op: merge, local: 0, remote: 1},
+		{op: check, local: 0, str: "ABCDEFGH"},
 	}
-	// Site #3: ABCD --> ABCDEF
-	l3 := l2.Fork()
-	l3.InsertChar('E')
-	l3.InsertChar('F')
-	if s3 := l3.AsString(); s3 != "ABCDEF" {
-		t.Errorf("3: l3 = %q, want %q", s3, "ABCDEF")
-	}
-	// Merge site #3 into #2: ABCDEF --> ABCDEFGH
-	l2.Merge(l3)
-	l2.InsertChar('G')
-	l2.InsertChar('H')
-	if s2 := l2.AsString(); s2 != "ABCDEFGH" {
-		t.Errorf("4: l2 = %q, want %q", s2, "ABCDEFGH")
-	}
-	// Merge site #2 into #1
-	l1.Merge(l2)
-	if s1 := l1.AsString(); s1 != "ABCDEFGH" {
-		t.Errorf("5: l1 = %q, want %q", s1, "ABCDEFGH")
+	_, err := runOperations(ops)
+	if err != nil {
+		t.Error(err)
 	}
 }
