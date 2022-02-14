@@ -264,7 +264,6 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 	var weave []Atom
 	for i < len(w1) && j < len(w2) {
 		a1, a2 := w1[i], w2[j]
-		fmt.Printf("a1: %v (%d), a2: %v (%d), weave: %v\n", a1, i, a2, j, weave)
 		if a1 == a2 {
 			// Atoms are equal, append it to the weave.
 			weave = append(weave, a1)
@@ -302,7 +301,6 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 	if j < len(w2) {
 		weave = append(weave, w2[j:]...)
 	}
-	fmt.Printf("weave: %v\n", weave)
 	return weave
 }
 

@@ -3,6 +3,7 @@ package crdt
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -26,6 +27,11 @@ func setupUUIDs(uuids []uuid.UUID) func() {
 		return uuid
 	}
 	return teardown
+}
+
+func setupTestFile(name string) (*os.File, error) {
+	os.MkdirAll("testdata", 0777)
+	return os.Create(fmt.Sprintf("testdata/%s.jsonl", name))
 }
 
 // -----
@@ -65,8 +71,12 @@ type operation struct {
 	str           string
 }
 
-func runOperations(ops []operation) ([]*RList, error) {
+func runOperations(t *testing.T, ops []operation) []*RList {
 	lists := []*RList{NewRList()}
+	f, err := setupTestFile(t.Name())
+	if err != nil {
+		t.Log(err)
+	}
 	for i, op := range ops {
 		list := lists[op.local]
 		switch op.op {
@@ -76,18 +86,33 @@ func runOperations(ops []operation) ([]*RList, error) {
 			list.DeleteChar()
 		case fork:
 			if op.remote != len(lists) {
-				panic(fmt.Sprintf("Fork: expecting remote index %d, got %d", op.remote, len(lists)))
+				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(lists))
 			}
 			lists = append(lists, list.Fork())
 		case merge:
 			list.Merge(lists[op.remote])
 		case check:
 			if s := list.AsString(); s != op.str {
-				return lists, fmt.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
+				t.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
+			}
+		}
+		// Dump lists into testfile.
+		if f != nil {
+			bs, err := json.Marshal(lists)
+			if err != nil {
+				t.Log(err)
+				f.Close()
+				f = nil
+			} else {
+				f.Write(bs)
+				f.WriteString("\n")
 			}
 		}
 	}
-	return lists, nil
+	if f != nil {
+		f.Close()
+	}
+	return lists
 }
 
 // -----
@@ -106,7 +131,7 @@ func TestRList(t *testing.T) {
 	//      |   |`- D - E - L
 	//      x   x
 	//
-	ops := []operation{
+	runOperations(t, []operation{
 		// Site #0: write CMD
 		{op: insertChar, local: 0, char: 'C'},
 		{op: insertChar, local: 0, char: 'M'},
@@ -143,12 +168,7 @@ func TestRList(t *testing.T) {
 		// Merge site #0 into #2 --> CTRLALTDEL
 		{op: merge, local: 2, remote: 0},
 		{op: check, local: 2, str: "CTRLALTDEL"},
-	}
-	lists, err := runOperations(ops)
-	if err != nil {
-		t.Error(err)
-	}
-	fmt.Println(toJSON(lists[2]))
+	})
 }
 
 func TestBackwardsClock(t *testing.T) {
@@ -166,7 +186,7 @@ func TestBackwardsClock(t *testing.T) {
 	//      `- D - E - . - I - O
 	//         |   |
 	//         x   x
-	ops := []operation{
+	runOperations(t, []operation{
 		// Create sites #0, #1, #2: C, CODE
 		{op: insertChar, local: 0, char: 'C'},
 		{op: fork, local: 0, remote: 1},
@@ -197,11 +217,7 @@ func TestBackwardsClock(t *testing.T) {
 		// Ensure other streams are not changed.
 		{op: check, local: 0, str: "C"},
 		{op: check, local: 1, str: "CODE"},
-	}
-	_, err := runOperations(ops)
-	if err != nil {
-		t.Error(err)
-	}
+	})
 }
 
 func TestUnknownRemoteYarn(t *testing.T) {
@@ -215,7 +231,7 @@ func TestUnknownRemoteYarn(t *testing.T) {
 	// Site #0: A - B -----------------------.- *
 	// Site #1:      `- C - D -------.- G - H'
 	// Site #2:              `- E - F'
-	ops := []operation{
+	runOperations(t, []operation{
 		// Create site #0: AB
 		{op: insertChar, local: 0, char: 'A'},
 		{op: insertChar, local: 0, char: 'B'},
@@ -237,9 +253,5 @@ func TestUnknownRemoteYarn(t *testing.T) {
 		// Merge site #1 into #0
 		{op: merge, local: 0, remote: 1},
 		{op: check, local: 0, str: "ABCDEFGH"},
-	}
-	_, err := runOperations(ops)
-	if err != nil {
-		t.Error(err)
-	}
+	})
 }
