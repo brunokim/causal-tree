@@ -40,7 +40,48 @@ export class Crdt {
             .append(this.controls())
             .append($("<div>")
                 .addClass("state")
-                .html(JSON.stringify(this.state())))
+                .append(this.renderState(this.state())))
+    }
+
+    renderState(state) {
+        let sites = []
+        let i = 0
+        for (let site of state) {
+            sites.push(this.renderSite(site, i))
+            i++
+        }
+        return sites
+    }
+
+    renderSite(site, i) {
+        return $("<div>")
+            .addClass("site")
+            .append(`Site S${i} - ${site['SiteID']}`)
+            .append($("<div>")
+                .addClass("weave")
+                .append(this.renderAtoms(site['Weave'])))
+    }
+
+    renderAtoms(weave) {
+        let atoms = []
+        for (let atom of weave) {
+            atoms.push(this.renderAtom(atom))
+        }
+        return atoms
+    }
+
+    renderAtom(atom) {
+        return $("<div>")
+            .addClass("atom")
+            .append($("<div>")
+                .addClass("atom-id")
+                .text(this.idString(atom['ID'])))
+            .append($("<div>")
+                .addClass("atom-value")
+                .text(atom['Value']))
+            .append($("<div>")
+                .addClass("atom-cause")
+                .text(this.idString(atom['Cause'])))
     }
 
     controls() {
@@ -80,6 +121,10 @@ export class Crdt {
             time = this.time
         }
         return this.states[time]
+    }
+
+    idString(id) {
+        return `S${id['Site']}@T${id['Timestamp']}`
     }
 }
 
