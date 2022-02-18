@@ -71,6 +71,20 @@ type operation struct {
 	str           string
 }
 
+func (op operation) String() string {
+	switch op.op {
+	case insertChar:
+		return fmt.Sprintf("insert %c at list #%d", op.char, op.local)
+	case deleteChar:
+		return fmt.Sprintf("delete char from list #%d", op.local)
+	case fork:
+		return fmt.Sprintf("fork list #%d into list #%d", op.local, op.remote)
+	case merge:
+		return fmt.Sprintf("merge list #%d into list #%d", op.remote, op.local)
+	}
+	return ""
+}
+
 func runOperations(t *testing.T, ops []operation) []*RList {
 	lists := []*RList{NewRList()}
 	f, err := setupTestFile(t.Name())
@@ -97,8 +111,11 @@ func runOperations(t *testing.T, ops []operation) []*RList {
 			}
 		}
 		// Dump lists into testfile.
-		if f != nil {
-			bs, err := json.Marshal(lists)
+		if f != nil && op.op != check {
+			bs, err := json.Marshal(map[string]interface{}{
+				"Action": op.String(),
+				"Sites":  lists,
+			})
 			if err != nil {
 				t.Log(err)
 				f.Close()
@@ -245,13 +262,14 @@ func TestUnknownRemoteYarn(t *testing.T) {
 		{op: insertChar, local: 2, char: 'E'},
 		{op: insertChar, local: 2, char: 'F'},
 		{op: check, local: 2, str: "ABCDEF"},
-		// Merge site #2 into #1: ABCDEF --> ABCDEFGH
+		// Merge site #2 into #1: ABCDEF --> ABCDGHEF
+		// Merging should not move the cursor (currently after D)
 		{op: merge, local: 1, remote: 2},
 		{op: insertChar, local: 1, char: 'G'},
 		{op: insertChar, local: 1, char: 'H'},
-		{op: check, local: 1, str: "ABCDEFGH"},
+		{op: check, local: 1, str: "ABCDGHEF"},
 		// Merge site #1 into #0
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "ABCDEFGH"},
+		{op: check, local: 0, str: "ABCDGHEF"},
 	})
 }

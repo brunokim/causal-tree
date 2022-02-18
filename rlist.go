@@ -282,17 +282,16 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 				i++
 			}
 		} else {
-			// Atoms are concurrent; append their causal blocks according to their heads' order.
-			n1, _ := causalBlock(w1, i)
-			n2, _ := causalBlock(w2, j)
+			// Atoms are concurrent; append first causal block, according to heads' order.
 			if a1.Compare(a2) >= 0 {
+				n1, _ := causalBlock(w1, i)
 				weave = append(weave, w1[i:n1]...)
-				weave = append(weave, w2[j:n2]...)
+				i = n1
 			} else {
+				n2, _ := causalBlock(w2, j)
 				weave = append(weave, w2[j:n2]...)
-				weave = append(weave, w1[i:n1]...)
+				j = n2
 			}
-			i, j = n1, n2
 		}
 	}
 	if i < len(w1) {

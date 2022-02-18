@@ -35,31 +35,55 @@ export class Crdt {
     }
 
     render() {
+        let state = this.state()
         $("#crdt")
             .html("")
             .append(this.controls())
             .append($("<div>")
                 .addClass("state")
-                .append(this.renderState(this.state())))
+                .append($("<h2>")
+                    .append(state['Action']))
+                .append(this.renderSites(state['Sites'])))
     }
 
-    renderState(state) {
-        let sites = []
+    renderSites(sites) {
+        let siteEls = []
         let i = 0
-        for (let site of state) {
-            sites.push(this.renderSite(site, i))
+        for (let site of sites) {
+            siteEls.push(this.renderSite(site, i))
             i++
         }
-        return sites
+        return siteEls
     }
 
     renderSite(site, i) {
+        let index = site['Sitemap'].indexOf(site['SiteID']);
         return $("<div>")
             .addClass("site")
-            .append(`Site S${i} - ${site['SiteID']}`)
+            .append($("<h3>").append(`List #${i}`))
+            .append($("<h4>").append("Sitemap"))
+            .append($("<ol>")
+                .addClass("sitemap")
+                .attr("start", 0)
+                .append(this.renderSiteIDs(site['Sitemap'], index)))
+            .append($("<h4>").append("Weave"))
             .append($("<div>")
                 .addClass("weave")
                 .append(this.renderAtoms(site['Weave'])))
+    }
+
+    renderSiteIDs(sitemap, index) {
+        let ids = []
+        let i = 0
+        for (let siteID of sitemap) {
+            let el = $("<li>").append(siteID)
+            if (i == index) {
+                el.addClass("highlight")
+            }
+            ids.push(el)
+            i++
+        }
+        return ids
     }
 
     renderAtoms(weave) {
