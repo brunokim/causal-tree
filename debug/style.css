@@ -9,6 +9,21 @@
     gap: 2em;
 }
 
+
+.site {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+}
+
+.site h3, .site h4, .site ol {
+    margin: 0;
+}
+
+.highlight {
+    font-weight: bold;
+}
+
 .weave {
     display: flex;
     flex-wrap: wrap;
