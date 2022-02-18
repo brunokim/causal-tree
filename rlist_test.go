@@ -262,13 +262,14 @@ func TestUnknownRemoteYarn(t *testing.T) {
 		{op: insertChar, local: 2, char: 'E'},
 		{op: insertChar, local: 2, char: 'F'},
 		{op: check, local: 2, str: "ABCDEF"},
-		// Merge site #2 into #1: ABCDEF --> ABCDEFGH
+		// Merge site #2 into #1: ABCDEF --> ABCDGHEF
+		// Merging should not move the cursor (currently after D)
 		{op: merge, local: 1, remote: 2},
 		{op: insertChar, local: 1, char: 'G'},
 		{op: insertChar, local: 1, char: 'H'},
-		{op: check, local: 1, str: "ABCDEFGH"},
+		{op: check, local: 1, str: "ABCDGHEF"},
 		// Merge site #1 into #0
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "ABCDEFGH"},
+		{op: check, local: 0, str: "ABCDGHEF"},
 	})
 }
