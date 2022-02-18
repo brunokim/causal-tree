@@ -64,6 +64,7 @@ export class Crdt {
             .append($("<h4>").append("Sitemap"))
             .append($("<ol>")
                 .addClass("sitemap")
+                .attr("start", 0)
                 .append(this.renderSiteIDs(site['Sitemap'], index)))
             .append($("<h4>").append("Weave"))
             .append($("<div>")
