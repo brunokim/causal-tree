@@ -57,8 +57,8 @@ type AtomValue interface {
 type RList struct {
 	// Weave is the flat representation of a causal tree.
 	Weave []Atom
-	// Cursor is the index in the weave of the latest inserted element.
-	Cursor uint32
+	// Cursor is the ID of the causing atom for the next operation.
+	Cursor AtomID
 	// Yarns is the list of atoms, grouped by the site that created them.
 	Yarns [][]Atom
 	// Sitemap is the ordered list of site IDs. The index in this sitemap is used to represent a site in atoms
@@ -75,7 +75,7 @@ func NewRList() *RList {
 	siteID := uuidv1()
 	return &RList{
 		Weave:     nil,
-		Cursor:    0,
+		Cursor:    AtomID{},
 		Yarns:     [][]Atom{nil},
 		Sitemap:   []uuid.UUID{siteID},
 		SiteID:    siteID,
@@ -98,6 +98,11 @@ func (l *RList) atomIndex(atomID AtomID) int {
 		}
 	}
 	return len(l.Weave)
+}
+
+// Gets an atom from yarns.
+func (l *RList) getAtom(atomID AtomID) Atom {
+	return l.Yarns[atomID.Site][atomID.Index]
 }
 
 // Inserts an atom in the given weave index.
@@ -223,6 +228,7 @@ func (l *RList) Fork() *RList {
 		for i, atom := range l.Weave {
 			l.Weave[i] = atom.remapSite(localRemap)
 		}
+		l.Cursor = l.Cursor.remapSite(localRemap)
 		// Insert empty yarn in local position.
 		l.Yarns = append(l.Yarns, nil)
 		copy(l.Yarns[i+1:], l.Yarns[i:])
@@ -346,7 +352,6 @@ func (l *RList) Merge(remote *RList) {
 	for i, atom := range l.Weave {
 		l.Weave[i] = atom.remapSite(localRemap)
 	}
-	cursorID := l.Weave[l.Cursor-1].ID
 	// 4. Merge yarns.
 	for i, yarn := range remote.Yarns {
 		i := remoteRemap.get(i)
@@ -372,8 +377,10 @@ func (l *RList) Merge(remote *RList) {
 	if l.Timestamp < remote.Timestamp {
 		l.Timestamp = remote.Timestamp
 	}
-	l.Cursor = uint32(l.atomIndex(cursorID) + 1)
 	l.Timestamp++
+	// 6. Fix cursor if necessary.
+	l.Cursor = l.Cursor.remapSite(localRemap)
+	l.fixDeletedCursor()
 }
 
 // -----
@@ -404,15 +411,40 @@ func causalBlock(weave []Atom, headIndex int) (int, []int) {
 	return len(weave), childIndices
 }
 
+func (l *RList) isDeleted(atomID AtomID) bool {
+	i := l.atomIndex(atomID)
+	_, children := l.causalBlock(i)
+	for _, j := range children {
+		atom := l.Weave[j]
+		if _, ok := atom.Value.(Delete); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *RList) fixDeletedCursor() {
+	for {
+		if !l.isDeleted(l.Cursor) {
+			break
+		}
+		l.Cursor = l.getAtom(l.Cursor).Cause
+	}
+}
+
 // +------------+
 // | Operations |
 // +------------+
 
 func (l *RList) insertAtomAtCursor(atom Atom) {
-	l.insertAtom(atom, int(l.Cursor))
+	var index int
+	if l.Cursor.Timestamp > 0 {
+		index = l.atomIndex(l.Cursor) + 1
+	}
+	l.insertAtom(atom, index)
 }
 
-func (l *RList) addAtom(value AtomValue) {
+func (l *RList) addAtom(value AtomValue) AtomID {
 	l.Timestamp++
 	if l.Timestamp == 0 {
 		// Overflow
@@ -424,17 +456,14 @@ func (l *RList) addAtom(value AtomValue) {
 		Index:     uint32(len(l.Yarns[i])),
 		Timestamp: l.Timestamp,
 	}
-	var cause AtomID
-	if l.Cursor > 0 {
-		cause = l.Weave[l.Cursor-1].ID
-	}
 	atom := Atom{
 		ID:    atomID,
-		Cause: cause,
+		Cause: l.Cursor,
 		Value: value,
 	}
 	l.insertAtomAtCursor(atom)
 	l.Yarns[i] = append(l.Yarns[i], atom)
+	return atomID
 }
 
 // +--------------------------+
@@ -455,8 +484,7 @@ func (v InsertChar) String() string { return string([]rune{v.Char}) }
 
 // InsertCharAfter inserts a char after the cursor position.
 func (l *RList) InsertChar(ch rune) {
-	l.addAtom(InsertChar{ch})
-	l.Cursor++
+	l.Cursor = l.addAtom(InsertChar{ch})
 }
 
 // +---------------------+
@@ -474,13 +502,11 @@ func (v Delete) String() string { return "⌫ " }
 
 // DeleteChar deletes the char before the cursor position.
 func (l *RList) DeleteChar() {
-	if l.Cursor == 0 {
+	if l.Cursor.Timestamp == 0 {
 		panic("delete char: no atom to delete")
 	}
 	l.addAtom(Delete{})
-	deletedAtom := l.Weave[l.Cursor-1]
-	prevID := deletedAtom.Cause
-	l.Cursor = uint32(l.atomIndex(prevID) + 1)
+	l.Cursor = l.getAtom(l.Cursor).Cause
 }
 
 // +------------+

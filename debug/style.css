@@ -41,6 +41,10 @@
     row-gap: 4px;
 }
 
+.atom.cursor {
+    border-width: 3px;
+}
+
 .atom-id {
     font-weight: bold;
 }
