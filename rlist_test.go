@@ -273,3 +273,33 @@ func TestUnknownRemoteYarn(t *testing.T) {
 		{op: check, local: 0, str: "ABCDGHEF"},
 	})
 }
+
+func TestDeleteCursor(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	runOperations(t, []operation{
+		// Create site #0: AB
+		{op: insertChar, local: 0, char: 'A'},
+		{op: insertChar, local: 0, char: 'B'},
+		// Create site #1 from #0: AB --> ABC
+		{op: fork, local: 0, remote: 1},
+		{op: insertChar, local: 1, char: 'C'},
+		// Merge site #1 into #0: cursor still at B
+		{op: merge, local: 0, remote: 1},
+		// Create site #2 from #1: ABC --> ARS
+		{op: fork, local: 1, remote: 2},
+		{op: deleteChar, local: 2},
+		{op: deleteChar, local: 2},
+		{op: insertChar, local: 2, char: 'R'},
+		{op: insertChar, local: 2, char: 'S'},
+		// Merge site #2 into #0: B is deleted and cursor is updated to A.
+		{op: merge, local: 0, remote: 2},
+		{op: insertChar, local: 0, char: 'X'},
+		{op: check, local: 0, str: "AXRS"},
+	})
+}

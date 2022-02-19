@@ -69,7 +69,7 @@ export class Crdt {
             .append($("<h4>").append("Weave"))
             .append($("<div>")
                 .addClass("weave")
-                .append(this.renderAtoms(site['Weave'])))
+                .append(this.renderAtoms(site['Weave'], site['Cursor'])))
     }
 
     renderSiteIDs(sitemap, index) {
@@ -86,26 +86,30 @@ export class Crdt {
         return ids
     }
 
-    renderAtoms(weave) {
+    renderAtoms(weave, cursor) {
         let atoms = []
         for (let atom of weave) {
-            atoms.push(this.renderAtom(atom))
+            atoms.push(this.renderAtom(atom, cursor))
         }
         return atoms
     }
 
-    renderAtom(atom) {
-        return $("<div>")
+    renderAtom(atom, cursor) {
+        let atomEl = $("<div>")
             .addClass("atom")
             .append($("<div>")
                 .addClass("atom-id")
-                .text(this.idString(atom['ID'])))
+                .text(idString(atom['ID'])))
             .append($("<div>")
                 .addClass("atom-value")
                 .text(atom['Value']))
             .append($("<div>")
                 .addClass("atom-cause")
-                .text(this.idString(atom['Cause'])))
+                .text(idString(atom['Cause'])))
+        if (idString(atom['ID']) == idString(cursor)) {
+            atomEl.addClass("cursor")
+        }
+        return atomEl
     }
 
     controls() {
@@ -146,9 +150,8 @@ export class Crdt {
         }
         return this.states[time]
     }
-
-    idString(id) {
-        return `S${id['Site']}@T${id['Timestamp']}`
-    }
 }
 
+function idString(id) {
+    return `S${id['Site']}@T${id['Timestamp']}`
+}
