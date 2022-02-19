@@ -165,14 +165,32 @@ func (l *RList) Fork() *RList {
 	}
 	newSiteID := uuidv1()
 	i := siteIndex(l.Sitemap, newSiteID)
-	// Insert empty yarn in local position.
-	l.Yarns = append(l.Yarns, nil)
-	copy(l.Yarns[i+1:], l.Yarns[i:])
-	l.Yarns[i] = nil
-	// Insert site ID into local sitemap.
-	l.Sitemap = append(l.Sitemap, uuid.Nil)
-	copy(l.Sitemap[i+1:], l.Sitemap[i:])
-	l.Sitemap[i] = newSiteID
+	if i == len(l.Sitemap) {
+		l.Yarns = append(l.Yarns, nil)
+		l.Sitemap = append(l.Sitemap, newSiteID)
+	} else {
+		// Remap atoms in yarns and weave.
+		localRemap := make(indexMap)
+		for j := i; j < len(l.Sitemap); j++ {
+			localRemap.set(j, j+1)
+		}
+		for i, yarn := range l.Yarns {
+			for j, atom := range yarn {
+				l.Yarns[i][j] = atom.remapSite(localRemap)
+			}
+		}
+		for i, atom := range l.Weave {
+			l.Weave[i] = atom.remapSite(localRemap)
+		}
+		// Insert empty yarn in local position.
+		l.Yarns = append(l.Yarns, nil)
+		copy(l.Yarns[i+1:], l.Yarns[i:])
+		l.Yarns[i] = nil
+		// Insert site ID into local sitemap.
+		l.Sitemap = append(l.Sitemap, uuid.Nil)
+		copy(l.Sitemap[i+1:], l.Sitemap[i:])
+		l.Sitemap[i] = newSiteID
+	}
 	// Copy data to remote list.
 	n := len(l.Sitemap)
 	l.Timestamp++
@@ -189,7 +207,6 @@ func (l *RList) Fork() *RList {
 		remote.Yarns[i] = make([]Atom, len(yarn))
 		copy(remote.Yarns[i], yarn)
 	}
-	// BUG: need to remap atoms if new site index is != n
 	copy(remote.Sitemap, l.Sitemap)
 	return remote
 }
