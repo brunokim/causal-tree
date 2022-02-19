@@ -154,6 +154,47 @@ func (a Atom) Compare(other Atom) int {
 	return a.ID.Compare(other.ID)
 }
 
+// +---------------+
+// | Remap indices |
+// +---------------+
+
+// Map storing conversion between indices.
+// Conversion from an index to itself are not stored.
+// Queries for an index that was not inserted or stored return the index itself.
+type indexMap map[int]int
+
+func (m indexMap) set(i, j int) {
+	if i != j {
+		m[i] = j
+	}
+}
+
+func (m indexMap) get(i int) int {
+	j, ok := m[i]
+	if !ok {
+		return i
+	}
+	return j
+}
+
+// -----
+
+func (a Atom) remapSite(m indexMap) Atom {
+	return Atom{
+		ID:    a.ID.remapSite(m),
+		Cause: a.Cause.remapSite(m),
+		Value: a.Value,
+	}
+}
+
+func (id AtomID) remapSite(m indexMap) AtomID {
+	return AtomID{
+		Site:      uint16(m.get(int(id.Site))),
+		Index:     id.Index,
+		Timestamp: id.Timestamp,
+	}
+}
+
 // +------+
 // | Fork |
 // +------+
@@ -234,47 +275,6 @@ func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
 	}
 	return s
 }
-
-// -----
-
-// Map storing conversion between indices.
-// Conversion from an index to itself are not stored.
-// Queries for an index that was not inserted or stored return the index itself.
-type indexMap map[int]int
-
-func (m indexMap) set(i, j int) {
-	if i != j {
-		m[i] = j
-	}
-}
-
-func (m indexMap) get(i int) int {
-	j, ok := m[i]
-	if !ok {
-		return i
-	}
-	return j
-}
-
-// -----
-
-func (a Atom) remapSite(m indexMap) Atom {
-	return Atom{
-		ID:    a.ID.remapSite(m),
-		Cause: a.Cause.remapSite(m),
-		Value: a.Value,
-	}
-}
-
-func (id AtomID) remapSite(m indexMap) AtomID {
-	return AtomID{
-		Site:      uint16(m.get(int(id.Site))),
-		Index:     id.Index,
-		Timestamp: id.Timestamp,
-	}
-}
-
-// -----
 
 func mergeWeaves(w1, w2 []Atom) []Atom {
 	var i, j int
@@ -375,6 +375,8 @@ func (l *RList) Merge(remote *RList) {
 	l.Cursor = uint32(l.atomIndex(cursorID) + 1)
 	l.Timestamp++
 }
+
+// -----
 
 // Returns the upper bound (exclusive) of head's causal block, plus its children's indices.
 //
