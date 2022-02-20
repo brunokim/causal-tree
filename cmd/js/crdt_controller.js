@@ -13,11 +13,13 @@ export class CrdtController {
                 .append("Fork")
                 .click(this.fork.bind(this)))
 
+        this.container = container
+        this.container.append(this.view)
+
+        this.controllers = []
         this.content = ""
         this.selStart = 0
         this.selEnd = 0
-
-        container.append(this.view)
     }
 
     textKeyup(evt) {
@@ -26,30 +28,37 @@ export class CrdtController {
         let selEnd = textarea.prop("selectionEnd")
         let content = textarea.val()
 
-        if (selStart == selEnd) {
+        if (content != this.content) {
+            console.log(`${this.id}: ${this.content} -> ${content}`)
+        } else if (selStart == selEnd) {
+            // Cursor changed
             if (selStart != this.selStart) {
-                console.log(`${this.selStart} -> ${selStart}`)
+                console.log(`${this.id}: ${this.selStart} -> ${selStart}`)
             }
         } else {
+            // Selection range changed
             if (selStart != this.selStart || selEnd != this.selEnd) {
-                console.log(`${this.selStart}:${this.selEnd} -> ${selStart}:${selEnd}`)
+                console.log(`${this.id}: ${this.selStart}:${this.selEnd} -> ${selStart}:${selEnd}`)
             }
-        }
-        if (content != this.content) {
-            console.log(this.content, "->", content)
         }
         this.selStart = selStart
         this.selEnd = selEnd
         this.content = content
     }
 
-    sync(evt) {
+    sync() {
         console.log('sync')
-        console.log(evt)
     }
 
-    fork(evt) {
-        console.log('fork')
-        console.log(evt)
+    fork() {
+        let sibling = new CrdtController(this.container)
+        this.controllers.push(sibling)
+        sibling.controllers.push(this)
+
+        let siblingTextarea = $("textarea", sibling.view).first();
+        siblingTextarea.val(this.content)
+        siblingTextarea.prop("selectionStart", this.selStart);
+        siblingTextarea.prop("selectionEnd", this.selEnd);
+        sibling.textKeyup({target: siblingTextarea})
     }
 }
