@@ -18,32 +18,45 @@ export class CrdtController {
 
         this.controllers = []
         this.content = ""
-        this.selStart = 0
-        this.selEnd = 0
+        this.selection = [0, 0]
     }
 
     textKeyup(evt) {
         let textarea = $(evt.target)
-        let selStart = textarea.prop("selectionStart")
-        let selEnd = textarea.prop("selectionEnd")
         let content = textarea.val()
+        let selection = [textarea.prop("selectionStart"), textarea.prop("selectionEnd")]
 
         if (content != this.content) {
             console.log(`${this.id}: ${this.content} -> ${content}`)
-        } else if (selStart == selEnd) {
-            // Cursor changed
-            if (selStart != this.selStart) {
-                console.log(`${this.id}: ${this.selStart} -> ${selStart}`)
-            }
-        } else {
-            // Selection range changed
-            if (selStart != this.selStart || selEnd != this.selEnd) {
-                console.log(`${this.id}: ${this.selStart}:${this.selEnd} -> ${selStart}:${selEnd}`)
-            }
         }
-        this.selStart = selStart
-        this.selEnd = selEnd
+        if (selection[0] != this.selection[0] || selection[1] != this.selection[1]) {
+            // Selection range changed
+            console.log(`${this.id}: ${this.selection[0]}:${this.selection[1]} -> ${selection[0]}:${selection[1]}`)
+        }
+        if (this.content == content &&
+            this.selection[0] == selection[0] &&
+            this.selection[1] == selection[1]) {
+            return
+        }
+        fetch('/edit', {
+            'method': 'POST',
+            'body': new URLSearchParams({
+                'id': this.id,
+                'sel0T0': this.selection[0],
+                'sel1T0': this.selection[1],
+                'contentT0': this.content,
+                'sel0T1': selection[0],
+                'sel1T1': selection[1],
+                'contentT1': content,
+            }),
+        }).then(this.handleEditResponse.bind(this)).catch(err => console.log(err))
+        this.selection = selection
         this.content = content
+    }
+
+    handleEditResponse(response) {
+        console.log('handleEditResponse')
+        console.log(response)
     }
 
     sync() {
