@@ -27,33 +27,29 @@ type Operation struct {
 //   ka = keep(a)
 //   dc = delete(c)
 //
-//            abcd   abcd   abcd   abcd   abcd
-//            ^       ^       ^       ^       ^
-//          +------+------+------+------+------+
-//          |      |      |      |      |      |
-//   xabdy  | ix 3 | ix 4 | ix 5 | ix 4 | ix 5 |
-//   ^      |      |      |      |      |      |
-//          +--^---+--^---+--^---+--^---+--^---+
-//          |      |      |      |      |      |
-//   xabdy  | ka 2 | ia 3 | ia 4 | ia 3 | ia 4 |
-//    ^     |     \|      |      |      |      |
-//          +------+--^---+--^---+--^---+--^---+
-//          |      |      |      |      |      |
-//   xabdy  | da 3 < kb 2 | ib 3 | ib 2 | ib 3 |
-//     ^    |      |     \|      |      |      |
-//          +------+------+--^---+--^---+--^---+
-//          |      |      |      |      |      |
-//   xabdy  | da 4 < db 3 < dc 2 < kd 1 | id 2 |
-//      ^   |      |      |      |     \|      |
-//          +------+------+------+------+--^---+
-//          |      |      |      |      |      |
-//   xabdy  | iy 5 | iy 4 | iy 3 | iy 2 | iy 1 |
-//       ^  |      |      |      |      |      |
-//          +--^---+--^---+--^---+--^---+--^---+
-//          |      |      |      |      |      |
-//   xabdy  | da 4 < db 3 < dc 2 < dd 1 < k0 0 |
-//        ^ |      |      |      |      |      |
-//          +------+------+------+------+------+
+//          xabdy   xabdy   xabdy   xabdy   xabdy   xabdy
+//  s1\s2   ^        ^        ^        ^        ^        ^
+//        +-------+-------+-------+-------+-------+-------+
+//        |       |       |       |       |       |       |
+//  abcd  | ix 3  < ka 2  | da 3  | da 4  | iy 5  < da 4  |
+//  ^     |       |      \|       |       |       |       |
+//        +-------+-------+---^---+---^---+-------+---^---+
+//        |       |       |       |       |       |       |
+//  abcd  | ix 4  < ia 3  < kb 2  | db 3  | iy 4  < db 3  |
+//   ^    |       |       |      \|       |       |       |
+//        +-------+-------+-------+---^---+-------+---^---+
+//        |       |       |       |       |       |       |
+//  abcd  | ix 5  < ia 4  < ib 3  < dc 2  | iy 3  < dc 2  |
+//    ^   |       |       |       |       |       |       |
+//        +-------+-------+-------+---^---+-------+---^---+
+//        |       |       |       |       |       |       |
+//  abcd  | ix 4  < ia 3  < ib 2  < kd 1  | iy 2  < dd 1  |
+//     ^  |       |       |       |      \|       |       |
+//        +-------+-------+-------+-------+-------+---^---+
+//        |       |       |       |       |       |       |
+//  abcd  | ix 5  < ia 4  < ib 3  < id 2  < iy 1  < k0 0  |
+//      ^ |       |       |       |       |       |       |
+//        +-------+-------+-------+-------+-------+-------+
 
 // Diff returns the sequence of insertions, deletions and insertions to transform s1 into s2.
 func Diff(s1, s2 string) ([]Operation, error) {
@@ -63,12 +59,12 @@ func Diff(s1, s2 string) ([]Operation, error) {
 	if !utf8.ValidString(s2) {
 		return nil, fmt.Errorf("s2 is not a valid utf8 string")
 	}
-	m, n := utf8.RuneCountInString(s2), utf8.RuneCountInString(s1)
-	chars1 := make([]rune, n)
+	m, n := utf8.RuneCountInString(s1), utf8.RuneCountInString(s2)
+	chars1 := make([]rune, m)
 	for i, ch := range s1 {
 		chars1[i] = ch
 	}
-	chars2 := make([]rune, m)
+	chars2 := make([]rune, n)
 	for j, ch := range s2 {
 		chars2[j] = ch
 	}
@@ -77,25 +73,25 @@ func Diff(s1, s2 string) ([]Operation, error) {
 		return i*(n+1) + j
 	}
 	// Diff between s1 and an empty string: delete all chars
-	for j, ch := range chars1 {
-		ops[coord(m, j)] = Operation{
+	for i, ch := range chars1 {
+		ops[coord(i, n)] = Operation{
 			Op:   Delete,
 			Char: ch,
-			Dist: n - j,
+			Dist: m - i,
 		}
 	}
 	// Diff between an empty string and s2: insert all chars
-	for i, ch := range chars2 {
-		ops[coord(i, n)] = Operation{
+	for j, ch := range chars2 {
+		ops[coord(m, j)] = Operation{
 			Op:   Insert,
 			Char: ch,
-			Dist: m - i,
+			Dist: n - j,
 		}
 	}
 	// Compute all paths of operations that produce minimal edit distance.
 	for i := m - 1; i >= 0; i-- {
 		for j := n - 1; j >= 0; j-- {
-			ch1, ch2 := chars1[j], chars2[i]
+			ch1, ch2 := chars1[i], chars2[j]
 			if ch1 == ch2 {
 				// Chars are the same, keep it
 				dist := ops[coord(i+1, j+1)].Dist
@@ -106,20 +102,20 @@ func Diff(s1, s2 string) ([]Operation, error) {
 				}
 			} else {
 				// Pick smallest dist between possible sequences, preferring insert on a tie.
-				op1 := ops[coord(i, j+1)]
-				op2 := ops[coord(i+1, j)]
+				op1 := ops[coord(i+1, j)]
+				op2 := ops[coord(i, j+1)]
 				if op2.Dist <= op1.Dist {
 					// Insert char from s2.
 					ops[coord(i, j)] = Operation{
 						Op:   Insert,
-						Char: chars2[i],
+						Char: chars2[j],
 						Dist: 1 + op2.Dist,
 					}
 				} else {
 					// Remove char from s1.
 					ops[coord(i, j)] = Operation{
 						Op:   Delete,
-						Char: chars1[j],
+						Char: chars1[i],
 						Dist: 1 + op1.Dist,
 					}
 				}
@@ -137,9 +133,9 @@ func Diff(s1, s2 string) ([]Operation, error) {
 			i++
 			j++
 		case Insert:
-			i++
-		case Delete:
 			j++
+		case Delete:
+			i++
 		}
 	}
 	return operations, nil
