@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"sort"
-	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -466,6 +465,53 @@ func (l *RList) addAtom(value AtomValue) AtomID {
 	return atomID
 }
 
+// +-------------------------+
+// | Operations - Set cursor |
+// +-------------------------+
+
+func (l *RList) filterDeleted() []Atom {
+	atoms := make([]Atom, len(l.Weave))
+	hasDeleted := false
+	for i, atom := range l.Weave {
+		switch atom.Value.(type) {
+		case InsertChar:
+			atoms[i] = atom
+		case Delete:
+			hasDeleted = true
+			j := l.atomIndex(atom.Cause)
+			atoms[i] = Atom{}
+			atoms[j] = Atom{}
+		default:
+			panic(fmt.Sprintf("filterWeave: unexpected atom value type %T (%v)", atom.Value, atom.Value))
+		}
+	}
+	if !hasDeleted {
+		// Cheap optimization for case where there are no deletions.
+		return atoms
+	}
+	// Move chars to fill in holes of invalid runes.
+	deleted := 0
+	for i, atom := range atoms {
+		if atom.ID.Timestamp == 0 {
+			deleted++
+		} else {
+			atoms[i-deleted] = atoms[i]
+		}
+	}
+	atoms = atoms[:len(atoms)-deleted]
+	return atoms
+}
+
+func (l *RList) SetCursor(i int) {
+	if i == -1 {
+		l.Cursor = AtomID{}
+	}
+	atoms := l.filterDeleted()
+	if i >= 0 && i < len(atoms)-1 {
+		l.Cursor = atoms[i].ID
+	}
+}
+
 // +--------------------------+
 // | Operations - Insert char |
 // +--------------------------+
@@ -485,6 +531,11 @@ func (v InsertChar) String() string { return string([]rune{v.Char}) }
 // InsertCharAfter inserts a char after the cursor position.
 func (l *RList) InsertChar(ch rune) {
 	l.Cursor = l.addAtom(InsertChar{ch})
+}
+
+func (l *RList) InsertCharAt(ch rune, i int) {
+	l.SetCursor(i)
+	l.InsertChar(ch)
 }
 
 // +---------------------+
@@ -509,42 +560,22 @@ func (l *RList) DeleteChar() {
 	l.Cursor = l.getAtom(l.Cursor).Cause
 }
 
+func (l *RList) DeleteCharAt(i int) {
+	l.SetCursor(i)
+	l.DeleteChar()
+}
+
 // +------------+
 // | Conversion |
 // +------------+
 
 // AsString interprets list as a sequence of chars.
 func (l *RList) AsString() string {
-	// Fill in chars with runes from weave. Deleted chars are represented with an invalid rune.
-	chars := make([]rune, len(l.Weave))
-	hasDeleted := false
-	for i, atom := range l.Weave {
-		switch v := atom.Value.(type) {
-		case InsertChar:
-			chars[i] = v.Char
-		case Delete:
-			hasDeleted = true
-			j := l.atomIndex(atom.Cause)
-			chars[i] = unicode.MaxRune + 1
-			chars[j] = unicode.MaxRune + 1
-		default:
-			panic(fmt.Sprintf("AsString: unexpected atom value type %T (%v)", atom.Value, atom.Value))
-		}
+	atoms := l.filterDeleted()
+	chars := make([]rune, len(atoms))
+	for i, atom := range atoms {
+		chars[i] = atom.Value.(InsertChar).Char
 	}
-	if !hasDeleted {
-		// Cheap optimization for case where there are no deletions.
-		return string(chars)
-	}
-	// Move chars to fill in holes of invalid runes.
-	deleted := 0
-	for i, ch := range chars {
-		if ch > unicode.MaxRune {
-			deleted++
-		} else {
-			chars[i-deleted] = chars[i]
-		}
-	}
-	chars = chars[:len(chars)-deleted]
 	return string(chars)
 }
 

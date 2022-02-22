@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
+	"github.com/brunokim/crdt"
 	"github.com/brunokim/crdt/diff"
 )
 
 var (
 	port = flag.Int("port", 8009, "port to run server")
+
+	lists = map[string]*crdt.RList{}
 )
 
 func main() {
@@ -39,24 +41,28 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Error parsing form in /edit: %v\n", err)
 		return
 	}
+	id := req.Form["id"][0]
+	if _, ok := lists[id]; !ok {
+		lists[id] = crdt.NewRList()
+	}
 	contentT0 := req.Form["contentT0"][0]
 	contentT1 := req.Form["contentT1"][0]
-	var b strings.Builder
 	ops, err := diff.Diff(contentT0, contentT1)
 	if err != nil {
 		log.Printf("%v", err)
 		return
 	}
+	var i int
 	for _, op := range ops {
 		switch op.Op {
 		case diff.Keep:
-			b.WriteString(" ")
+			i++
 		case diff.Insert:
-			b.WriteString("+")
+			lists[id].InsertCharAt(op.Char, i-1)
+			i++
 		case diff.Delete:
-			b.WriteString("-")
+			lists[id].DeleteCharAt(i)
 		}
-		fmt.Fprintf(&b, "%c", op.Char)
 	}
-	log.Printf("%s", b.String())
+	log.Printf("%s: %s", id, lists[id].AsString())
 }
