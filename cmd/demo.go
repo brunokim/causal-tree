@@ -16,7 +16,8 @@ var (
 	port          = flag.Int("port", 8009, "port to run server")
 	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format")
 
-	lists = map[string]*crdt.RList{}
+	listmap         = map[string]*crdt.RList{}
+	listFrontendIDs = []string{}
 
 	debugFile *os.File
 )
@@ -32,6 +33,7 @@ func main() {
 		}
 	}
 
+	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir("../debug"))))
 	http.HandleFunc("/edit", handleEdit)
 	http.HandleFunc("/", handleFile)
 
@@ -55,8 +57,9 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	id := req.Form["id"][0]
-	if _, ok := lists[id]; !ok {
-		lists[id] = crdt.NewRList()
+	if _, ok := listmap[id]; !ok {
+		listmap[id] = crdt.NewRList()
+		listFrontendIDs = append(listFrontendIDs, id)
 	}
 	contentT0 := req.Form["contentT0"][0]
 	contentT1 := req.Form["contentT1"][0]
@@ -72,15 +75,19 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		case diff.Keep:
 			i++
 		case diff.Insert:
-			lists[id].InsertCharAt(op.Char, i-1)
+			listmap[id].InsertCharAt(op.Char, i-1)
 			i++
 		case diff.Delete:
-			lists[id].DeleteCharAt(i)
+			listmap[id].DeleteCharAt(i)
 		}
 	}
-	log.Printf("%s: %s", id, lists[id].AsString())
+	log.Printf("%s: %s", id, listmap[id].AsString())
 	if debugFile != (*os.File)(nil) {
 		// Dump lists into debug file.
+		lists := make([]*crdt.RList, len(listmap))
+		for i, id := range listFrontendIDs {
+			lists[i] = listmap[id]
+		}
 		bs, err := json.Marshal(map[string]interface{}{
 			"Params": req.Form,
 			"Sites":  lists,
@@ -92,6 +99,7 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		} else {
 			debugFile.Write(bs)
 			debugFile.WriteString("\n")
+			debugFile.Sync()
 		}
 	}
 }

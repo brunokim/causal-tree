@@ -1,4 +1,4 @@
-import {Crdt} from '/crdt_view.js'
+import {Crdt} from './crdt_view.js'
 
 document.forms[0].addEventListener("submit", (evt) => {
     evt.preventDefault();
