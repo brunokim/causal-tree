@@ -1,3 +1,4 @@
+import {diff} from './diff.js'
 
 export class CrdtController {
     constructor(container) {
@@ -28,6 +29,8 @@ export class CrdtController {
         if (content == this.content) {
             return
         }
+        console.log(diff(this.content, content))
+
         console.log(`${this.content} -> ${content}`)
         fetch('/edit', {
             'method': 'POST',
