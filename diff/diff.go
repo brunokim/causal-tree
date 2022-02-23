@@ -108,14 +108,14 @@ func Diff(s1, s2 string) ([]Operation, error) {
 					// Insert char from s2.
 					ops[coord(i, j)] = Operation{
 						Op:   Insert,
-						Char: chars2[j],
+						Char: ch2,
 						Dist: 1 + op2.Dist,
 					}
 				} else {
 					// Remove char from s1.
 					ops[coord(i, j)] = Operation{
 						Op:   Delete,
-						Char: chars1[i],
+						Char: ch1,
 						Dist: 1 + op1.Dist,
 					}
 				}
