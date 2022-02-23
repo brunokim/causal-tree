@@ -223,3 +223,29 @@ Site #1 + #2 + #3:
     #1: [1|C 1]  [1|T 7]  [1|R 8]  [1|L 9]  [1|M 2]  [1|# 5]  [1|D 3]  [1|# 6]
                                                                               ^j
 
+## Demo web interface
+
+Textarea offers some properties to know its content and cursor state:
+
+- `value`: actual textarea's content.
+- `selectionStart`: position in text of the start of the selection range.
+- `selectionEnd`: position in text of the end of the selection range.
+- `selectionDirection`: direction of selection, either `none`, `forward` or `backward`.
+
+If `selectionStart` = `selectionEnd`, then it's just an actual cursor.
+
+When content changes, the following are the possible transitions. The character `|` means a cursor,
+and `[]` means a selection.
+
+1. Insertion: `abc|de -> abcx|de`
+2. Deletion: `abc|de -> ab|de` 
+3. Cursor to forward selection: `abc|de -> abc[d]e`
+4. Cursor to backward selection: `abc|de -> ab[c]de`
+5. Grow forward selection: `abc[d]e -> abc[de]`
+6. Grow backward selection: `ab[c]de -> a[bc]de`
+
+Wow, it seems that there are *many* more events: https://rawgit.com/w3c/input-events/v1/index.html#interface-InputEvent-Attributes
+
+I was hoping I could just send the server the actual edit made by the user using the `input` event,
+but it seems that I should keep using a diff algorithm server-side, because I can't reproduce all
+these events.

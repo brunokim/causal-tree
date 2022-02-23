@@ -5,7 +5,7 @@ export class CrdtController {
         this.view = $("<div>")
             .addClass("crdt")
             .append($("<textarea>")
-                .on('keyup', this.textKeyup.bind(this)))
+                .on('input', this.textInput.bind(this)))
             .append($("<button>")
                 .append("Sync")
                 .click(this.sync.bind(this)))
@@ -21,36 +21,22 @@ export class CrdtController {
         this.selection = [0, 0]
     }
 
-    textKeyup(evt) {
+    textInput(evt) {
         let textarea = $(evt.target)
         let content = textarea.val()
-        let selection = [textarea.prop("selectionStart"), textarea.prop("selectionEnd")]
 
-        if (content != this.content) {
-            console.log(`${this.id}: ${this.content} -> ${content}`)
-        }
-        if (selection[0] != this.selection[0] || selection[1] != this.selection[1]) {
-            // Selection range changed
-            console.log(`${this.id}: ${this.selection[0]}:${this.selection[1]} -> ${selection[0]}:${selection[1]}`)
-        }
-        if (this.content == content &&
-            this.selection[0] == selection[0] &&
-            this.selection[1] == selection[1]) {
+        if (content == this.content) {
             return
         }
+        console.log(`${this.content} -> ${content}`)
         fetch('/edit', {
             'method': 'POST',
             'body': new URLSearchParams({
                 'id': this.id,
-                'sel0T0': this.selection[0],
-                'sel1T0': this.selection[1],
                 'contentT0': this.content,
-                'sel0T1': selection[0],
-                'sel1T1': selection[1],
                 'contentT1': content,
             }),
         }).then(this.handleEditResponse.bind(this)).catch(err => console.log(err))
-        this.selection = selection
         this.content = content
     }
 
@@ -68,10 +54,18 @@ export class CrdtController {
         this.controllers.push(sibling)
         sibling.controllers.push(this)
 
-        let siblingTextarea = $("textarea", sibling.view).first();
-        siblingTextarea.val(this.content)
-        siblingTextarea.prop("selectionStart", this.selStart);
-        siblingTextarea.prop("selectionEnd", this.selEnd);
-        sibling.textKeyup({target: siblingTextarea})
+        let textarea1 = $("textarea", this.view).first();
+        let textarea2 = $("textarea", sibling.view).first();
+
+        // Copy properties of this textarea to forked textarea.
+        textarea2.val(textarea1.val())
+        textarea2.prop('selectionStart', textarea1.prop('selectionStart'))
+        textarea2.prop('selectionEnd', textarea1.prop('selectionEnd'))
+        textarea2.prop('selectionDirection', textarea1.prop('selectionDirection'))
+
+
+        // TODO: implement /fork endpoint.
+        // For now, treat all text as new from scratch.
+        sibling.textInput({target: textarea2})
     }
 }
