@@ -7,9 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"unicode/utf8"
 
 	"github.com/brunokim/crdt"
-	"github.com/brunokim/crdt/diff"
 )
 
 var (
@@ -51,55 +51,63 @@ func handleFile(w http.ResponseWriter, req *http.Request) {
 	log.Printf("%v", path)
 }
 
+type editRequest struct {
+	ID  string          `json:"id"`
+	Ops []editOperation `json:"ops"`
+}
+
+type editOperation struct {
+	Op   string `json:"op"`
+	Char string `json:"ch"`
+	Dist int    `json:"dist"`
+}
+
 func handleEdit(w http.ResponseWriter, req *http.Request) {
-	if err := req.ParseForm(); err != nil {
-		log.Printf("Error parsing form in /edit: %v\n", err)
+	parser := json.NewDecoder(req.Body)
+	editReq := &editRequest{}
+	if err := parser.Decode(editReq); err != nil {
+		log.Printf("Error parsing body in /edit: %v", err)
 		return
 	}
-	id := req.Form["id"][0]
+	id := editReq.ID
 	if _, ok := listmap[id]; !ok {
 		listmap[id] = crdt.NewRList()
 		listFrontendIDs = append(listFrontendIDs, id)
 	}
-	contentT0 := req.Form["contentT0"][0]
-	contentT1 := req.Form["contentT1"][0]
-	ops, err := diff.Diff(contentT0, contentT1)
-	if err != nil {
-		log.Printf("%v", err)
-		return
-	}
 	// Execute operations in list.
 	var i int
-	for _, op := range ops {
+	for j, op := range editReq.Ops {
 		switch op.Op {
-		case diff.Keep:
+		case "keep":
 			i++
-		case diff.Insert:
-			listmap[id].InsertCharAt(op.Char, i-1)
+		case "insert":
+			ch, _ := utf8.DecodeRuneInString(op.Char)
+			listmap[id].InsertCharAt(ch, i-1)
 			i++
-		case diff.Delete:
+		case "delete":
 			listmap[id].DeleteCharAt(i)
+		}
+		// Dump lists into debug file.
+		if op.Op != "keep" && debugFile != (*os.File)(nil) {
+			lists := make([]*crdt.RList, len(listmap))
+			for i, id := range listFrontendIDs {
+				lists[i] = listmap[id]
+			}
+			bs, err := json.Marshal(map[string]interface{}{
+				"Params": editReq,
+				"OpIdx":  j,
+				"Sites":  lists,
+			})
+			if err != nil {
+				log.Printf("Error while writing to debug file: %v", err)
+				debugFile.Close()
+				debugFile = nil
+			} else {
+				debugFile.Write(bs)
+				debugFile.WriteString("\n")
+				debugFile.Sync()
+			}
 		}
 	}
 	log.Printf("%s: %s", id, listmap[id].AsString())
-	if debugFile != (*os.File)(nil) {
-		// Dump lists into debug file.
-		lists := make([]*crdt.RList, len(listmap))
-		for i, id := range listFrontendIDs {
-			lists[i] = listmap[id]
-		}
-		bs, err := json.Marshal(map[string]interface{}{
-			"Params": req.Form,
-			"Sites":  lists,
-		})
-		if err != nil {
-			log.Printf("Error while writing to debug file: %v", err)
-			debugFile.Close()
-			debugFile = nil
-		} else {
-			debugFile.Write(bs)
-			debugFile.WriteString("\n")
-			debugFile.Sync()
-		}
-	}
 }

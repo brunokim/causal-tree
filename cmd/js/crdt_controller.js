@@ -29,16 +29,17 @@ export class CrdtController {
         if (content == this.content) {
             return
         }
-        console.log(diff(this.content, content))
+        let ops = diff(this.content, content)
+        console.log(ops)
 
-        console.log(`${this.content} -> ${content}`)
+        let body = {'id': this.id, 'ops': ops}
         fetch('/edit', {
             'method': 'POST',
-            'body': new URLSearchParams({
-                'id': this.id,
-                'contentT0': this.content,
-                'contentT1': content,
-            }),
+            'headers': {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            'body': JSON.stringify(body),
         }).then(this.handleEditResponse.bind(this)).catch(err => console.log(err))
         this.content = content
     }
