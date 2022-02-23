@@ -1,23 +1,36 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/brunokim/crdt"
 	"github.com/brunokim/crdt/diff"
 )
 
 var (
-	port = flag.Int("port", 8009, "port to run server")
+	port          = flag.Int("port", 8009, "port to run server")
+	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format")
 
 	lists = map[string]*crdt.RList{}
+
+	debugFile *os.File
 )
 
 func main() {
 	flag.Parse()
+
+	if *debugFilename != "" {
+		var err error
+		debugFile, err = os.Create(*debugFilename)
+		if err != nil {
+			log.Printf("Error opening debug file: %v", err)
+		}
+	}
 
 	http.HandleFunc("/edit", handleEdit)
 	http.HandleFunc("/", handleFile)
@@ -52,6 +65,7 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		log.Printf("%v", err)
 		return
 	}
+	// Execute operations in list.
 	var i int
 	for _, op := range ops {
 		switch op.Op {
@@ -65,4 +79,19 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	log.Printf("%s: %s", id, lists[id].AsString())
+	if debugFile != (*os.File)(nil) {
+		// Dump lists into debug file.
+		bs, err := json.Marshal(map[string]interface{}{
+			"Params": req.Form,
+			"Sites":  lists,
+		})
+		if err != nil {
+			log.Printf("Error while writing to debug file: %v", err)
+			debugFile.Close()
+			debugFile = nil
+		} else {
+			debugFile.Write(bs)
+			debugFile.WriteString("\n")
+		}
+	}
 }
