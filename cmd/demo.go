@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 	"unicode/utf8"
 
 	"github.com/brunokim/crdt"
@@ -14,17 +15,24 @@ import (
 
 var (
 	port          = flag.Int("port", 8009, "port to run server")
-	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format")
+	debug         = flag.Bool("debug", false, "whether to dump debug information. Default debug file is log_{{datetime}}.jsonl")
+	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format. Implies --debug")
 
 	listmap         = map[string]*crdt.RList{}
 	listFrontendIDs = []string{}
 
 	debugFile *os.File
+
+	numEditRequests int
 )
 
 func main() {
 	flag.Parse()
 
+	if *debug && *debugFilename == "" {
+		datetime := time.Now().Format("2006-01-02T15:04:05")
+		*debugFilename = fmt.Sprintf("log_%s.jsonl", datetime)
+	}
 	if *debugFilename != "" {
 		var err error
 		debugFile, err = os.Create(*debugFilename)
@@ -62,6 +70,7 @@ type editOperation struct {
 	Dist int    `json:"dist"`
 }
 
+// TODO: synchronize access to shared state.
 func handleEdit(w http.ResponseWriter, req *http.Request) {
 	parser := json.NewDecoder(req.Body)
 	editReq := &editRequest{}
@@ -69,6 +78,7 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Error parsing body in /edit: %v", err)
 		return
 	}
+	writeDebug(editReq)
 	id := editReq.ID
 	if _, ok := listmap[id]; !ok {
 		listmap[id] = crdt.NewRList()
@@ -93,21 +103,36 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 			for i, id := range listFrontendIDs {
 				lists[i] = listmap[id]
 			}
-			bs, err := json.Marshal(map[string]interface{}{
-				"Params": editReq,
+			writeDebug(map[string]interface{}{
+				"ReqIdx": numEditRequests,
 				"OpIdx":  j,
 				"Sites":  lists,
 			})
-			if err != nil {
-				log.Printf("Error while writing to debug file: %v", err)
-				debugFile.Close()
-				debugFile = nil
-			} else {
-				debugFile.Write(bs)
-				debugFile.WriteString("\n")
-				debugFile.Sync()
-			}
 		}
 	}
+	syncDebug()
+	numEditRequests++
 	log.Printf("%s: %s", id, listmap[id].AsString())
+}
+
+// TODO: write and sync debug info in another goroutine
+func writeDebug(x interface{}) {
+	if debugFile == (*os.File)(nil) {
+		return
+	}
+	bs, err := json.Marshal(x)
+	if err != nil {
+		log.Printf("Error while writing to debug file: %v", err)
+		debugFile.Close()
+		debugFile = nil
+		return
+	}
+	debugFile.Write(bs)
+	debugFile.WriteString("\n")
+}
+
+func syncDebug() {
+	if debugFile != (*os.File)(nil) {
+		debugFile.Sync()
+	}
 }

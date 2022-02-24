@@ -1,7 +1,24 @@
 
+// Connect each list partial state to its request.
+function prepareStates(log) {
+    let states = []
+    let requests = []
+    for (let record of log) {
+        if (!record['Sites']) {
+            requests.push(record)
+            continue
+        }
+        if (record['ReqIdx'] !== undefined) {
+            record['Request'] = requests[record['ReqIdx']]
+        }
+        states.push(record)
+    }
+    return states
+}
+
 export class Crdt {
-    constructor(states) {
-        this.states = states;
+    constructor(log) {
+        this.states = prepareStates(log)
         this.time = 0;
 
         this.keyListener = this.handleKeypress.bind(this)
@@ -36,13 +53,18 @@ export class Crdt {
 
     render() {
         let state = this.state()
+        let title = state['Action']
+        if (!title && state['ReqIdx'] !== undefined && state['OpIdx'] !== undefined) {
+            let opIdx = state['OpIdx']
+            let op = state['Request'].ops[opIdx]
+            title = `Request #${state['ReqIdx']} - ${op.op} ${op.ch} @ ${opIdx}`
+        }
         $("#crdt")
             .html("")
             .append(this.controls())
             .append($("<div>")
                 .addClass("state")
-                .append($("<h2>")
-                    .append(state['Action']))
+                .append($("<h2>").append(title))
                 .append(this.renderSites(state['Sites'])))
     }
 
