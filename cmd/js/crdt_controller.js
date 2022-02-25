@@ -6,13 +6,13 @@ export class CrdtController {
         this.view = $("<div>")
             .addClass("crdt")
             .append($("<textarea>")
-                .on('input', this.textInput.bind(this)))
+                .on('input', evt => this.textInput(evt)))
             .append($("<button>")
                 .append("Sync")
-                .click(this.sync.bind(this)))
+                .click(evt => this.sync(evt)))
             .append($("<button>")
                 .append("Fork")
-                .click(this.fork.bind(this)))
+                .click(evt => this.fork(evt)))
 
         this.container = container
         this.container.append(this.view)
@@ -30,6 +30,7 @@ export class CrdtController {
             return
         }
         let ops = diff(this.content, content)
+        this.content = content
         console.log(ops)
 
         let body = {'id': this.id, 'ops': ops}
@@ -40,13 +41,15 @@ export class CrdtController {
                 'Content-Type': 'application/json',
             },
             'body': JSON.stringify(body),
-        }).then(this.handleEditResponse.bind(this)).catch(err => console.log(err))
-        this.content = content
+        })
+        .then(response => response.text())
+        .then(text => this.handleEditResponse(text))
+        .catch(err => console.log(err))
     }
 
-    handleEditResponse(response) {
+    handleEditResponse(text) {
         console.log('handleEditResponse')
-        console.log(response)
+        console.log(text)
     }
 
     sync() {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -110,9 +111,12 @@ func handleEdit(w http.ResponseWriter, req *http.Request) {
 			})
 		}
 	}
+	content := listmap[id].AsString()
+	log.Printf("%s: %s", id, content)
+	w.Header().Set("Content-Type", "text/plain; charset=utf8")
+	io.WriteString(w, content)
 	syncDebug()
 	numEditRequests++
-	log.Printf("%s: %s", id, listmap[id].AsString())
 }
 
 // TODO: write and sync debug info in another goroutine
