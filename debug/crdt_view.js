@@ -117,6 +117,7 @@ export class Crdt {
     }
 
     renderAtom(atom, cursor) {
+        // TODO: replace non-printable characters in value.
         let atomEl = $("<div>")
             .addClass("atom")
             .append($("<div>")

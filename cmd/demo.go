@@ -55,7 +55,7 @@ func newState(debugMsgs chan<- debugMessage) *state {
 func main() {
 	flag.Parse()
 
-	debugMsgs := runDebugActor()
+	debugMsgs := runDebug()
 	s := newState(debugMsgs)
 
 	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir("../debug"))))

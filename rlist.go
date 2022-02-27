@@ -525,8 +525,7 @@ type InsertChar struct {
 
 func (v InsertChar) AtomPriority() int { return 0 }
 func (v InsertChar) MarshalJSON() ([]byte, error) {
-	// TODO: handle newlines and other forbidden characters in JSON
-	return []byte(fmt.Sprintf(`"insert %c"`, v.Char)), nil
+	return json.Marshal(fmt.Sprintf("insert %c", v.Char))
 }
 func (v InsertChar) String() string { return string([]rune{v.Char}) }
 
