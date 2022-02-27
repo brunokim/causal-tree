@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -18,32 +18,35 @@ var (
 	port          = flag.Int("port", 8009, "port to run server")
 	debug         = flag.Bool("debug", false, "whether to dump debug information. Default debug file is log_{{datetime}}.jsonl")
 	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format. Implies --debug")
+)
 
-	listmap         = map[string]*crdt.RList{}
-	listFrontendIDs = []string{}
+type state struct {
+	sync.Mutex
 
 	debugFile *os.File
 
+	listmap         map[string]*crdt.RList
+	listFrontendIDs []string
+
 	numEditRequests int
-)
+}
+
+func newState() *state {
+	return &state{
+		debugFile: createDebug(),
+		listmap:   make(map[string]*crdt.RList),
+	}
+}
+
+// -----
 
 func main() {
 	flag.Parse()
 
-	if *debug && *debugFilename == "" {
-		datetime := time.Now().Format("2006-01-02T15:04:05")
-		*debugFilename = fmt.Sprintf("log_%s.jsonl", datetime)
-	}
-	if *debugFilename != "" {
-		var err error
-		debugFile, err = os.Create(*debugFilename)
-		if err != nil {
-			log.Printf("Error opening debug file: %v", err)
-		}
-	}
+	s := newState()
 
 	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir("../debug"))))
-	http.HandleFunc("/edit", handleEdit)
+	http.Handle("/edit", editHTTPHandler{s})
 	http.HandleFunc("/", handleFile)
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -60,6 +63,13 @@ func handleFile(w http.ResponseWriter, req *http.Request) {
 	log.Printf("%v", path)
 }
 
+// -----
+
+type editMessage struct {
+	w   http.ResponseWriter
+	req *editRequest
+}
+
 type editRequest struct {
 	ID  string          `json:"id"`
 	Ops []editOperation `json:"ops"`
@@ -71,72 +81,106 @@ type editOperation struct {
 	Dist int    `json:"dist"`
 }
 
-// TODO: synchronize access to shared state.
-func handleEdit(w http.ResponseWriter, req *http.Request) {
+type editHTTPHandler struct {
+	s *state
+}
+
+func (h editHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	parser := json.NewDecoder(req.Body)
 	editReq := &editRequest{}
 	if err := parser.Decode(editReq); err != nil {
 		log.Printf("Error parsing body in /edit: %v", err)
 		return
 	}
-	writeDebug(editReq)
-	id := editReq.ID
-	if _, ok := listmap[id]; !ok {
-		listmap[id] = crdt.NewRList()
-		listFrontendIDs = append(listFrontendIDs, id)
+	h.s.handleEdit(w, editReq)
+}
+
+func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
+	s.Lock()
+	defer s.Unlock()
+	s.writeDebug(req)
+
+	id := req.ID
+	if _, ok := s.listmap[id]; !ok {
+		s.listmap[id] = crdt.NewRList()
+		s.listFrontendIDs = append(s.listFrontendIDs, id)
 	}
 	// Execute operations in list.
 	var i int
-	for j, op := range editReq.Ops {
+	for j, op := range req.Ops {
 		switch op.Op {
 		case "keep":
 			i++
 		case "insert":
 			ch, _ := utf8.DecodeRuneInString(op.Char)
-			listmap[id].InsertCharAt(ch, i-1)
+			s.listmap[id].InsertCharAt(ch, i-1)
 			i++
 		case "delete":
-			listmap[id].DeleteCharAt(i)
+			s.listmap[id].DeleteCharAt(i)
 		}
 		// Dump lists into debug file.
-		if op.Op != "keep" && debugFile != (*os.File)(nil) {
-			lists := make([]*crdt.RList, len(listmap))
-			for i, id := range listFrontendIDs {
-				lists[i] = listmap[id]
+		if op.Op != "keep" && s.isDebug() {
+			lists := make([]*crdt.RList, len(s.listmap))
+			for i, id := range s.listFrontendIDs {
+				lists[i] = s.listmap[id]
 			}
-			writeDebug(map[string]interface{}{
-				"ReqIdx": numEditRequests,
+			s.writeDebug(map[string]interface{}{
+				"ReqIdx": s.numEditRequests,
 				"OpIdx":  j,
 				"Sites":  lists,
 			})
 		}
 	}
-	content := listmap[id].AsString()
+	content := s.listmap[id].AsString()
 	log.Printf("%s: %s", id, content)
-	w.Header().Set("Content-Type", "text/plain; charset=utf8")
-	io.WriteString(w, content)
-	syncDebug()
-	numEditRequests++
+
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "%s\n", content)
+
+	s.syncDebug()
+	s.numEditRequests++
+}
+
+// -----
+
+func createDebug() *os.File {
+	if !*debug && *debugFilename == "" {
+		return nil
+	}
+	if *debugFilename == "" {
+		datetime := time.Now().Format("2006-01-02T15:04:05")
+		*debugFilename = fmt.Sprintf("log_%s.jsonl", datetime)
+	}
+	debugFile, err := os.Create(*debugFilename)
+	if err != nil {
+		log.Printf("Error opening debug file: %v", err)
+		return nil
+	}
+	return debugFile
+}
+
+func (s *state) isDebug() bool {
+	return s.debugFile != (*os.File)(nil)
 }
 
 // TODO: write and sync debug info in another goroutine
-func writeDebug(x interface{}) {
-	if debugFile == (*os.File)(nil) {
+func (s *state) writeDebug(x interface{}) {
+	if !s.isDebug() {
 		return
 	}
 	bs, err := json.Marshal(x)
 	if err != nil {
 		log.Printf("Error while writing to debug file: %v", err)
-		debugFile.Close()
-		debugFile = nil
+		s.debugFile.Close()
+		s.debugFile = nil
 		return
 	}
-	debugFile.Write(bs)
-	debugFile.WriteString("\n")
+	s.debugFile.Write(bs)
+	s.debugFile.WriteString("\n")
 }
 
-func syncDebug() {
-	if debugFile != (*os.File)(nil) {
-		debugFile.Sync()
+func (s *state) syncDebug() {
+	if s.isDebug() {
+		s.debugFile.Sync()
 	}
 }

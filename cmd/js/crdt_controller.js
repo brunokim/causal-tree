@@ -37,7 +37,7 @@ export class CrdtController {
         fetch('/edit', {
             'method': 'POST',
             'headers': {
-                'Accept': 'application/json',
+                'Accept': 'text/plain',
                 'Content-Type': 'application/json',
             },
             'body': JSON.stringify(body),
@@ -48,7 +48,6 @@ export class CrdtController {
     }
 
     handleEditResponse(text) {
-        console.log('handleEditResponse')
         console.log(text)
     }
 
