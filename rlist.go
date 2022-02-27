@@ -508,7 +508,7 @@ func (l *RList) SetCursor(i int) {
 		return
 	}
 	atoms := l.filterDeleted()
-	if i < len(atoms)-1 {
+	if i < len(atoms) {
 		l.Cursor = atoms[i].ID
 	}
 }
