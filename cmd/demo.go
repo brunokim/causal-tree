@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -60,6 +61,7 @@ func main() {
 
 	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir("../debug"))))
 	http.Handle("/edit", editHTTPHandler{s})
+	http.Handle("/fork", forkHTTPHandler{s})
 	http.HandleFunc("/", handleFile)
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -150,10 +152,52 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 	log.Printf("%s: value     = %s", id, content)
 
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "%s\n", content)
+	io.WriteString(w, content)
 
 	s.syncDebug()
 	s.numEditRequests++
+}
+
+// -----
+
+type forkRequest struct {
+	LocalID  string `json:"local"`
+	RemoteID string `json:"remote"`
+}
+
+type forkHTTPHandler struct {
+	s *state
+}
+
+func (h forkHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	parser := json.NewDecoder(req.Body)
+	forkReq := &forkRequest{}
+	if err := parser.Decode(forkReq); err != nil {
+		log.Printf("Error parsing body in /fork: %v", err)
+		return
+	}
+	h.s.handleFork(w, forkReq)
+}
+
+func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
+	s.Lock()
+	defer s.Unlock()
+	s.writeDebug(req)
+
+	if _, ok := s.listmap[req.LocalID]; !ok {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "unknown local frontend ID %q", req.LocalID)
+		return
+	}
+	if _, ok := s.listmap[req.RemoteID]; ok {
+		w.WriteHeader(http.StatusPreconditionFailed)
+		fmt.Fprintf(w, "new remote frontend ID already exists: %q", req.RemoteID)
+		return
+	}
+	s.listmap[req.RemoteID] = s.listmap[req.LocalID].Fork()
+	log.Printf("%s: fork      = %s", req.LocalID, req.RemoteID)
+
+	s.syncDebug()
 }
 
 // -----

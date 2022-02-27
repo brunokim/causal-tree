@@ -19,7 +19,10 @@ export class CrdtController {
 
         this.controllers = []
         this.content = ""
-        this.selection = [0, 0]
+    }
+
+    textarea() {
+        return $("textarea", this.view).first()
     }
 
     textInput(evt) {
@@ -48,7 +51,9 @@ export class CrdtController {
     }
 
     handleEditResponse(text) {
-        console.log(text)
+        if (this.content != text) {
+            console.log(`ERROR: ${this.id}: got ${text} from server (local: ${this.content})`)
+        }
     }
 
     sync() {
@@ -59,9 +64,10 @@ export class CrdtController {
         let sibling = new CrdtController(this.container)
         this.controllers.push(sibling)
         sibling.controllers.push(this)
+        sibling.content = this.content
 
-        let textarea1 = $("textarea", this.view).first();
-        let textarea2 = $("textarea", sibling.view).first();
+        let textarea1 = this.textarea()
+        let textarea2 = sibling.textarea()
 
         // Copy properties of this textarea to forked textarea.
         textarea2.val(textarea1.val())
@@ -69,9 +75,23 @@ export class CrdtController {
         textarea2.prop('selectionEnd', textarea1.prop('selectionEnd'))
         textarea2.prop('selectionDirection', textarea1.prop('selectionDirection'))
 
+        let body = {'local': this.id, 'remote': sibling.id}
+        fetch('/fork', {
+            'method': 'POST',
+            'headers': {
+                'Accept': '*/*',
+                'Content-Type': 'application/json',
+            },
+            'body': JSON.stringify(body),
+        })
+        .then(response => response.text())
+        .then(text => this.handleForkResponse(text))
+        .catch(err => console.log(err))
+    }
 
-        // TODO: implement /fork endpoint.
-        // For now, treat all text as new from scratch.
-        sibling.textInput({target: textarea2})
+    handleForkResponse(text) {
+        if (text) {
+            console.log(`WARNING: ${this.id}: expected empty response, got ${text}`)
+        }
     }
 }
