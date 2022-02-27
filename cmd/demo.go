@@ -127,9 +127,11 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 		case "insert":
 			ch, _ := utf8.DecodeRuneInString(op.Char)
 			s.listmap[id].InsertCharAt(ch, i-1)
+			log.Printf("%s: operation = insertCharAt %c %d", id, ch, i-1)
 			i++
 		case "delete":
 			s.listmap[id].DeleteCharAt(i)
+			log.Printf("%s: operation = deleteCharAt %d", id, i)
 		}
 		// Dump lists into debug file.
 		if op.Op != "keep" && s.isDebug() {
@@ -145,7 +147,7 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 		}
 	}
 	content := s.listmap[id].AsString()
-	log.Printf("%s: %s", id, content)
+	log.Printf("%s: value     = %s", id, content)
 
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprintf(w, "%s\n", content)

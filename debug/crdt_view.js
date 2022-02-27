@@ -57,7 +57,7 @@ export class Crdt {
         if (!title && state['ReqIdx'] !== undefined && state['OpIdx'] !== undefined) {
             let opIdx = state['OpIdx']
             let op = state['Request'].ops[opIdx]
-            title = `Request #${state['ReqIdx']} - ${op.op} ${op.ch} @ ${opIdx}`
+            title = `Request #${state['ReqIdx']} @ ${opIdx} - ${op.op} ${op.ch}`
         }
         $("#crdt")
             .html("")

@@ -44,21 +44,28 @@ func setupTestFile(name string) (*os.File, error) {
 //
 // Operations are:
 //
-// insertChar <local> <char> -- insert a char at cursor on list 'local'.
-// deleteChar <local>        -- delete the char at cursor on list 'local'.
-// fork <local> <remote>     -- fork list 'local' into list 'remote'.
-// merge <local> <remote>    -- merge list 'remote' into list 'local'.
-// check <local> <str>       -- check that the contents of 'local' spell 'str'.
+// insertChar <local> <char>         -- insert a char at cursor on list 'local'.
+// deleteChar <local>                -- delete the char at cursor on list 'local'.
+// setCursor <local> <pos>           -- set cursor at list-position 'pos' on list 'local'
+// insertCharAt <local> <char> <pos> -- insert a char at list-position 'pos' on list 'local'
+// deleteCharAt <local> <pos>        -- delete char at list-position 'pos' on list 'local'
+// fork <local> <remote>             -- fork list 'local' into list 'remote'.
+// merge <local> <remote>            -- merge list 'remote' into list 'local'.
+// check <local> <str>               -- check that the contents of 'local' spell 'str'.
 //
 // Lists are referred by their order of creation, NOT by their sitemap index.
 // The fork operation requires specifying the correct index, even if it could be
 // inferred from the number of already created lists, just to improve readability.
+// 'list-position' refers to the position in the *resulting* list, not the weave.
 
 type operationType int
 
 const (
 	insertChar operationType = iota
 	deleteChar
+	setCursor
+	insertCharAt
+	deleteCharAt
 	fork
 	merge
 	check
@@ -68,6 +75,7 @@ type operation struct {
 	op            operationType
 	local, remote int
 	char          rune
+	pos           int
 	str           string
 }
 
@@ -77,6 +85,12 @@ func (op operation) String() string {
 		return fmt.Sprintf("insert %c at list #%d", op.char, op.local)
 	case deleteChar:
 		return fmt.Sprintf("delete char from list #%d", op.local)
+	case setCursor:
+		return fmt.Sprintf("set cursor @ %d at list #%d", op.pos, op.local)
+	case insertCharAt:
+		return fmt.Sprintf("insert %c @ %d at list #%d", op.char, op.pos, op.local)
+	case deleteCharAt:
+		return fmt.Sprintf("delete char @ %d from list #%d", op.pos, op.local)
 	case fork:
 		return fmt.Sprintf("fork list #%d into list #%d", op.local, op.remote)
 	case merge:
@@ -98,6 +112,12 @@ func runOperations(t *testing.T, ops []operation) []*RList {
 			list.InsertChar(op.char)
 		case deleteChar:
 			list.DeleteChar()
+		case setCursor:
+			list.SetCursor(op.pos)
+		case insertCharAt:
+			list.InsertCharAt(op.char, op.pos)
+		case deleteCharAt:
+			list.DeleteCharAt(op.pos)
 		case fork:
 			if op.remote != len(lists) {
 				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(lists))
@@ -301,5 +321,27 @@ func TestDeleteCursor(t *testing.T) {
 		{op: merge, local: 0, remote: 2},
 		{op: insertChar, local: 0, char: 'X'},
 		{op: check, local: 0, str: "AXRS"},
+	})
+}
+
+func TestSetCursor(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	runOperations(t, []operation{
+		// Create site #0: abcd
+		{op: insertCharAt, char: 'a', pos: -1},
+		{op: insertCharAt, char: 'b', pos: 0},
+		{op: insertCharAt, char: 'c', pos: 1},
+		{op: insertCharAt, char: 'd', pos: 2},
+		// Transform abcd -> xabdy
+		{op: insertCharAt, char: 'x', pos: -1},
+		{op: check, str: "xabcd"},
+		{op: deleteCharAt, pos: 3},
+		{op: check, str: "xabd"},
+		{op: insertCharAt, char: 'y', pos: 3},
+		{op: check, str: "xabdy"},
 	})
 }
