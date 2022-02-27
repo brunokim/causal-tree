@@ -249,3 +249,55 @@ Wow, it seems that there are *many* more events: https://rawgit.com/w3c/input-ev
 I was hoping I could just send the server the actual edit made by the user using the `input` event,
 but it seems that I should keep using a diff algorithm server-side, because I can't reproduce all
 these events.
+
+## Operations to build other data structures
+
+    {                     # map
+      "key1": 1,          # int
+      "key2": "str",      # str
+      "key3": ['a', 'b'], # list
+      "key4": {3, 2, 1},  # set
+      "key5": 3.14,       # float
+    }
+
+    [map]
+      |
+      +-- [entry]
+      |    |   '--[key]--[str]--['k']--['e']--['y']--['1']
+      |    '------[val]--[int]--[+1]
+      +-- [entry]
+      |    |   '--[key]--[str]--['k']--['e']--['y']--['2']
+      |    '------[val]--[str]--['s']--['t']--['r']
+      +-- [entry]
+      |    |   '--[key]--[str]--['k']--['e']--['y']--['3']
+      |    '------[val]--[list]
+      |                     '---[char]-['a']
+      |                            '---[char]-['b']
+      +-- [entry]
+      |    |   '--[key]--[str]--['k']--['e']--['y']--['4']
+      |    '------[val]--[set]
+      |                    |
+      |                    +----[int]--[+3]
+      |                    +----[int]--[+2]
+      |                    +----[int]--[+1]
+      +-- [entry]
+           |   '--[key]--[str]--['k']--['e']--['y']--['5']
+           '------[val]--[float]-[+3.14]
+
+
+- How to merge two maps with conflicting key mappings? Say,
+  `{a: [1, 2]} + {a: [x, y]} => {a: [1, 2] + [x, y]}`, but what
+  about `{a: 1} + {a: x}`?
+    - Both can be kept, but only the first would be considered.
+      The UI can note that there is a conflict that may need to
+      be resolved or ignored. 
+        - This can be a strategy for every "illegal" state that
+          can't be auto-merged like sequences.
+- How to note if a set is add-wins or delete-wins? Same question
+  for maps.
+- How to note if an int conflict should be last-write-wins or 
+  addition? Or that a float conflict can take the mean?
+- What about custom structs/named tuples? Or actual tuples?
+- Can we express restrictions on a data structure, like accepted
+  types on a list, or that a set has sorted order, or insertion
+  order?
