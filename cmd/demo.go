@@ -20,10 +20,22 @@ var (
 	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format. Implies --debug")
 )
 
+type debugMsgType int
+
+const (
+	writeDebug debugMsgType = iota
+	syncDebug
+)
+
+type debugMessage struct {
+	msgType debugMsgType
+	payload interface{}
+}
+
 type state struct {
 	sync.Mutex
 
-	debugFile *os.File
+	debugMsgs chan<- debugMessage
 
 	listmap         map[string]*crdt.RList
 	listFrontendIDs []string
@@ -31,9 +43,9 @@ type state struct {
 	numEditRequests int
 }
 
-func newState() *state {
+func newState(debugMsgs chan<- debugMessage) *state {
 	return &state{
-		debugFile: createDebug(),
+		debugMsgs: debugMsgs,
 		listmap:   make(map[string]*crdt.RList),
 	}
 }
@@ -43,7 +55,8 @@ func newState() *state {
 func main() {
 	flag.Parse()
 
-	s := newState()
+	debugMsgs := runDebugActor()
+	s := newState(debugMsgs)
 
 	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir("../debug"))))
 	http.Handle("/edit", editHTTPHandler{s})
@@ -143,6 +156,53 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 
 // -----
 
+func (s *state) isDebug() bool {
+	return s.debugMsgs != nil
+}
+
+func (s *state) writeDebug(x interface{}) {
+	if s.isDebug() {
+		s.debugMsgs <- debugMessage{
+			msgType: writeDebug,
+			payload: x,
+		}
+	}
+}
+
+func (s *state) syncDebug() {
+	if s.isDebug() {
+		s.debugMsgs <- debugMessage{msgType: syncDebug}
+	}
+}
+
+func runDebug() chan<- debugMessage {
+	f := createDebug()
+	if f == nil {
+		return nil
+	}
+	ch := make(chan debugMessage, 10)
+	go func() {
+		for msg := range ch {
+			if f == nil {
+				continue
+			}
+			switch msg.msgType {
+			case writeDebug:
+				if bs, err := json.Marshal(msg.payload); err != nil {
+					log.Printf("Error while writing to debug file: %v", err)
+				} else {
+					f.Write(bs)
+					f.WriteString("\n")
+				}
+			case syncDebug:
+				f.Sync()
+			}
+		}
+		f.Close()
+	}()
+	return ch
+}
+
 func createDebug() *os.File {
 	if !*debug && *debugFilename == "" {
 		return nil
@@ -157,30 +217,4 @@ func createDebug() *os.File {
 		return nil
 	}
 	return debugFile
-}
-
-func (s *state) isDebug() bool {
-	return s.debugFile != (*os.File)(nil)
-}
-
-// TODO: write and sync debug info in another goroutine
-func (s *state) writeDebug(x interface{}) {
-	if !s.isDebug() {
-		return
-	}
-	bs, err := json.Marshal(x)
-	if err != nil {
-		log.Printf("Error while writing to debug file: %v", err)
-		s.debugFile.Close()
-		s.debugFile = nil
-		return
-	}
-	s.debugFile.Write(bs)
-	s.debugFile.WriteString("\n")
-}
-
-func (s *state) syncDebug() {
-	if s.isDebug() {
-		s.debugFile.Sync()
-	}
 }
