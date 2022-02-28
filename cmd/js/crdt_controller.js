@@ -14,12 +14,16 @@ export class CrdtController {
             .append($("<textarea>")
                 .on('input', evt => this.textInput(evt)))
             .append($("<button>")
-                .append("Sync")
-                .click(evt => this.sync(evt)))
-            .append($("<button>")
                 .append("Fork")
                 .click(evt => this.fork(evt)))
+            .append($("<div>")
+                .addClass("sync"))
         return this.view
+    }
+
+    renderSyncArea() {
+        let syncView = this.parent_controller.renderSyncArea(this)
+        $(".sync", this.view).html("").append(syncView)
     }
 
     textarea() {
@@ -57,7 +61,7 @@ export class CrdtController {
         }
     }
 
-    sync() {
+    sync(evt) {
         console.log('sync')
     }
 
