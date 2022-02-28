@@ -1,8 +1,14 @@
 import {diff} from './diff.js'
 
 export class CrdtController {
-    constructor(container) {
+    constructor(parent_controller) {
         this.id = crypto.randomUUID()
+        this.parent_controller = parent_controller
+        this.view = null
+        this.content = ""
+    }
+
+    render() {
         this.view = $("<div>")
             .addClass("crdt")
             .append($("<textarea>")
@@ -13,12 +19,7 @@ export class CrdtController {
             .append($("<button>")
                 .append("Fork")
                 .click(evt => this.fork(evt)))
-
-        this.container = container
-        this.container.append(this.view)
-
-        this.controllers = []
-        this.content = ""
+        return this.view
     }
 
     textarea() {
@@ -61,9 +62,7 @@ export class CrdtController {
     }
 
     fork() {
-        let sibling = new CrdtController(this.container)
-        this.controllers.push(sibling)
-        sibling.controllers.push(this)
+        let sibling = this.parent_controller.newCrdt()
         sibling.content = this.content
 
         let textarea1 = this.textarea()

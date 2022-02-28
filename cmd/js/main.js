@@ -1,5 +1,6 @@
-import {CrdtController} from '/js/crdt_controller.js'
+import {SitesController} from '/js/sites_controller.js'
 
 // TODO: load server state on reloads.
-new CrdtController($("#crdts"))
+let controller = new SitesController($("#crdts"))
+controller.newCrdt()
 
