@@ -345,3 +345,49 @@ func TestSetCursor(t *testing.T) {
 		{op: check, str: "xabdy"},
 	})
 }
+
+func TestDeleteAfterMerge(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	runOperations(t, []operation{
+		// Create site #0: abcd
+		{op: insertChar, local: 0, char: 'a'},
+		{op: insertChar, local: 0, char: 'b'},
+		{op: insertChar, local: 0, char: 'c'},
+		{op: insertChar, local: 0, char: 'd'},
+		{op: check, local: 0, str: "abcd"},
+		// Create site #1: abcd -> xabdy
+		{op: fork, local: 0, remote: 1},
+		{op: insertCharAt, local: 1, char: 'x', pos: -1},
+		{op: deleteCharAt, local: 1, pos: 3},
+		{op: insertCharAt, local: 1, char: 'y', pos: 3},
+		{op: setCursor, local: 1, pos: 4},
+		{op: check, local: 1, str: "xabdy"},
+		// Edit site #0: abcd -> abcdefg
+		{op: insertChar, local: 0, char: 'e'},
+		{op: insertChar, local: 0, char: 'f'},
+		{op: insertChar, local: 0, char: 'g'},
+		{op: check, local: 0, str: "abcdefg"},
+		// Merge site #0 -> site #1
+		{op: merge, local: 1, remote: 0},
+		{op: check, local: 1, str: "xabdyefg"},
+		// Merge site #1 -> site #0
+		{op: merge, local: 0, remote: 1},
+		{op: check, local: 0, str: "xabdyefg"},
+		// Delete everything from site #0: xabdyefg -> E
+		{op: insertCharAt, local: 0, char: 'E', pos: -1},
+		{op: deleteCharAt, local: 0, pos: 1}, // x
+		{op: deleteCharAt, local: 0, pos: 1}, // a
+		{op: deleteCharAt, local: 0, pos: 1}, // b
+		{op: deleteCharAt, local: 0, pos: 1}, // d
+		{op: deleteCharAt, local: 0, pos: 1}, // y
+		{op: deleteCharAt, local: 0, pos: 1}, // e
+		{op: deleteCharAt, local: 0, pos: 1}, // f
+		{op: deleteCharAt, local: 0, pos: 1}, // g
+		{op: check, local: 0, str: "E"},
+	})
+}

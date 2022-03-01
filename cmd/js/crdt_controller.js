@@ -84,6 +84,7 @@ export class CrdtController {
 
     handleSyncResponse(text) {
         this.textarea().val(text)
+        this.content = text
     }
 
     fork() {

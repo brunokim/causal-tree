@@ -83,6 +83,21 @@ func TestDiff(t *testing.T) {
 				{Op: diff.Insert, Char: 'y'},
 			},
 		},
+		{
+			s1: "xabdyefg",
+			s2: "E",
+			want: []diff.Operation{
+				{Op: diff.Insert, Char: 'E'},
+				{Op: diff.Delete, Char: 'x'},
+				{Op: diff.Delete, Char: 'a'},
+				{Op: diff.Delete, Char: 'b'},
+				{Op: diff.Delete, Char: 'd'},
+				{Op: diff.Delete, Char: 'y'},
+				{Op: diff.Delete, Char: 'e'},
+				{Op: diff.Delete, Char: 'f'},
+				{Op: diff.Delete, Char: 'g'},
+			},
+		},
 	}
 	ignoreDist := cmpopts.IgnoreFields(diff.Operation{}, "Dist")
 	for _, test := range tests {
