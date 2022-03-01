@@ -201,7 +201,7 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 // -----
 
 type syncRequest struct {
-	LocalID   string   `json:"id"`
+	LocalID  string `json:"id"`
 	RemoteIDs []string `json:"mergeIds"`
 }
 
@@ -225,42 +225,38 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 	s.writeDebug(req)
 
 	local, ok := s.listmap[req.LocalID]
-	if !ok {
+    if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "unknown local frontend ID %q", req.LocalID)
 		return
 	}
-	for i, remoteID := range req.RemoteIDs {
-		remote, ok := s.listmap[remoteID]
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "unknown remote frontend ID: %q", remoteID)
-			return
-		}
-		local.Merge(remote)
-		log.Printf("%s: merge     = %s", req.LocalID, remoteID)
+    for i, remoteID := range req.RemoteIDs {
+        remote, ok := s.listmap[remoteID]
+        if !ok {
+            w.WriteHeader(http.StatusNotFound)
+            fmt.Fprintf(w, "unknown remote frontend ID: %q", remoteID)
+            return
+        }
+        local.Merge(remote)
+        log.Printf("%s: merge     = %s", req.LocalID, remoteID)
 		s.writeDebug(map[string]interface{}{
-			"ReqIdx": s.numSyncRequests,
-			"OpIdx":  i,
-			"Sites":  s.lists(),
-		})
-	}
-
-	w.Header().Set("Content-Type", "text/plain")
-	io.WriteString(w, local.AsString())
-
+            "ReqIdx": s.numSyncRequests,
+            "OpIdx":  i,
+            "Sites":  s.lists(),
+        })
+    }
 	s.syncDebug()
-	s.numSyncRequests++
+    s.numSyncRequests++
 }
 
 // -----
 
 func (s *state) lists() []*crdt.RList {
-	lists := make([]*crdt.RList, len(s.listmap))
-	for i, id := range s.listFrontendIDs {
-		lists[i] = s.listmap[id]
-	}
-	return lists
+    lists := make([]*crdt.RList, len(s.listmap))
+    for i, id := range s.listFrontendIDs {
+        lists[i] = s.listmap[id]
+    }
+    return lists
 }
 
 func (s *state) isDebug() bool {

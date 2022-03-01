@@ -61,13 +61,38 @@ export class CrdtController {
         }
     }
 
-    sync(evt) {
-        console.log('sync')
+    // NOTE: sync is just local to the current controller because it's more intuitive for anyone
+    // clicking a button in its scope, so it merges in the changes from incoming-connected sites.
+    //
+    // We may rethink this if we get a better UX to show what is changing in remote controllers.
+    sync() {
+        let mergeIds = this.parent_controller.incomingIds(this)
+
+        let body = {'id': this.id, 'mergeIds': mergeIds}
+        fetch('/sync', {
+            'method': 'POST',
+            'headers': {
+                'Accept': 'text/plain',
+                'Content-Type': 'application/json',
+            },
+            'body': JSON.stringify(body),
+        })
+        .then(response => response.text())
+        .then(text => this.handleSyncResponse(text))
+        .catch(err => console.log(err))
+    }
+
+    handleSyncResponse(text) {
+        this.textarea().val(text)
     }
 
     fork() {
         let sibling = this.parent_controller.newCrdt()
         sibling.content = this.content
+
+        this.parent_controller.connect(this.id, sibling.id)
+        this.renderSyncArea()
+        sibling.renderSyncArea()
 
         let textarea1 = this.textarea()
         let textarea2 = sibling.textarea()

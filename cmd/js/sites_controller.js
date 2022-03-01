@@ -53,6 +53,10 @@ export class SitesController {
         this.graph[dest].inc.delete(source)
     }
 
+    incomingIds(child) {
+        return [...this.graph[child.id].inc]
+    }
+
     renderSyncArea(child) {
         let view = $("<div>")
             .addClass("sync")
@@ -64,7 +68,7 @@ export class SitesController {
             `))
             .append($("<button>")
                 .text("Sync")
-                .click(evt => child.sync(evt)))
+                .click(evt => child.sync()))
 
         for (let crdt of this.crdts) {
             let isSelf = false, isOut = false, isInc = false
