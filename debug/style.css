@@ -1,69 +1,69 @@
 .active {
-    background-color: #ff6;
+  background-color: #ff6;
 }
 
 .state {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2em;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2em;
 }
-
 
 .site {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
 }
 
-.site h3, .site h4, .site ol {
-    margin: 0;
+.site h3,
+.site h4,
+.site ol {
+  margin: 0;
 }
 
 .highlight {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 .weave {
-    display: flex;
-    flex-wrap: wrap;
-    row-gap: 10px;
-    column-gap: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 10px;
+  column-gap: 5px;
 }
 
 .atom {
-    display:flex;
-    flex-direction: column;
-    border: black solid 1px;
-    border-radius: 4px;
-    padding: 4px;
-    text-align: center;
-    row-gap: 4px;
+  display: flex;
+  flex-direction: column;
+  border: black solid 1px;
+  border-radius: 4px;
+  padding: 4px;
+  text-align: center;
+  row-gap: 4px;
 }
 
 .atom.cursor {
-    border-width: 3px;
+  border-width: 3px;
 }
 
 .atom-id {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 .atom-value {
-    font-size: 1.2em;
+  font-size: 1.2em;
 }
 
 .atom-cause {
-    font-size: 0.8em;
+  font-size: 0.8em;
 }
 
 .container {
-    display:flex;
-    align-items: first baseline;
-    gap: 1em;
+  display: flex;
+  align-items: first baseline;
+  gap: 1em;
 }
 
 .hidden {
-    display: none;
+  display: none;
 }
-

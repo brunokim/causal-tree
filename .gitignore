@@ -2,3 +2,5 @@
 .*.swp
 
 *.jsonl
+
+node_modules/
