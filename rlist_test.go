@@ -9,14 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func toJSON(v interface{}) string {
-	bs, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return string(bs)
-}
-
 func setupUUIDs(uuids []uuid.UUID) func() {
 	var i int
 	oldUUIDv1 := uuidv1
@@ -133,6 +125,7 @@ func runOperations(t *testing.T, ops []operation) []*RList {
 		// Dump lists into testfile.
 		if f != nil && op.op != check {
 			bs, err := json.Marshal(map[string]interface{}{
+				"Type":   "test",
 				"Action": op.String(),
 				"Sites":  lists,
 			})

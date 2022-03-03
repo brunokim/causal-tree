@@ -21,6 +21,8 @@ var (
 	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format. Implies --debug")
 )
 
+// -----
+
 type debugMsgType int
 
 const (
@@ -33,6 +35,8 @@ type debugMessage struct {
 	payload interface{}
 }
 
+// -----
+
 type state struct {
 	sync.Mutex
 
@@ -42,6 +46,7 @@ type state struct {
 	listFrontendIDs []string
 
 	numEditRequests int
+	numForkRequests int
 	numSyncRequests int
 }
 
@@ -50,6 +55,15 @@ func newState(debugMsgs chan<- debugMessage) *state {
 		debugMsgs: debugMsgs,
 		listmap:   make(map[string]*crdt.RList),
 	}
+}
+
+func index(y string, xs []string) int {
+	for i, x := range xs {
+		if x == y {
+			return i
+		}
+	}
+	return len(xs)
 }
 
 // -----
@@ -82,11 +96,6 @@ func handleFile(w http.ResponseWriter, req *http.Request) {
 
 // -----
 
-type editMessage struct {
-	w   http.ResponseWriter
-	req *editRequest
-}
-
 type editRequest struct {
 	ID  string          `json:"id"`
 	Ops []editOperation `json:"ops"`
@@ -115,7 +124,10 @@ func (h editHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 	s.Lock()
 	defer s.Unlock()
-	s.writeDebug(req)
+	s.writeDebug(map[string]interface{}{
+		"Type":    "edit",
+		"Request": req,
+	})
 
 	id := req.ID
 	if _, ok := s.listmap[id]; !ok {
@@ -138,11 +150,13 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 			log.Printf("%s: operation = deleteCharAt %d", id, i)
 		}
 		// Dump lists into debug file.
-		if op.Op != "keep" && s.isDebug() {
+		if op.Op != "keep" {
 			s.writeDebug(map[string]interface{}{
-				"ReqIdx": s.numEditRequests,
-				"OpIdx":  j,
-				"Sites":  s.lists(),
+				"Type":     "editStep",
+				"ReqIdx":   s.numEditRequests,
+				"StepIdx":  j,
+				"Sites":    s.debugLists(),
+				"LocalIdx": index(id, s.listFrontendIDs),
 			})
 		}
 	}
@@ -180,7 +194,10 @@ func (h forkHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 	s.Lock()
 	defer s.Unlock()
-	s.writeDebug(req)
+	s.writeDebug(map[string]interface{}{
+		"Type":    "fork",
+		"Request": req,
+	})
 
 	if _, ok := s.listmap[req.LocalID]; !ok {
 		w.WriteHeader(http.StatusNotFound)
@@ -193,8 +210,18 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 		return
 	}
 	s.listmap[req.RemoteID] = s.listmap[req.LocalID].Fork()
+	s.listFrontendIDs = append(s.listFrontendIDs, req.RemoteID)
 	log.Printf("%s: fork      = %s", req.LocalID, req.RemoteID)
 
+	s.writeDebug(map[string]interface{}{
+		"Type":      "forkStep",
+		"ReqIdx":    s.numForkRequests,
+		"StepIdx":   0,
+		"Sites":     s.debugLists(),
+		"LocalIdx":  index(req.LocalID, s.listFrontendIDs),
+		"RemoteIdx": index(req.RemoteID, s.listFrontendIDs),
+	})
+	s.numForkRequests++
 	s.syncDebug()
 }
 
@@ -222,7 +249,10 @@ func (h syncHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 	s.Lock()
 	defer s.Unlock()
-	s.writeDebug(req)
+	s.writeDebug(map[string]interface{}{
+		"Type":    "sync",
+		"Request": req,
+	})
 
 	local, ok := s.listmap[req.LocalID]
 	if !ok {
@@ -239,10 +269,14 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 		}
 		local.Merge(remote)
 		log.Printf("%s: merge     = %s", req.LocalID, remoteID)
+
 		s.writeDebug(map[string]interface{}{
-			"ReqIdx": s.numSyncRequests,
-			"OpIdx":  i,
-			"Sites":  s.lists(),
+			"Type":      "syncStep",
+			"ReqIdx":    s.numSyncRequests,
+			"StepIdx":   i,
+			"Sites":     s.debugLists(),
+			"LocalIdx":  index(req.LocalID, s.listFrontendIDs),
+			"RemoteIdx": index(remoteID, s.listFrontendIDs),
 		})
 	}
 
@@ -255,7 +289,10 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 
 // -----
 
-func (s *state) lists() []*crdt.RList {
+func (s *state) debugLists() []*crdt.RList {
+	if !s.isDebug() {
+		return nil
+	}
 	lists := make([]*crdt.RList, len(s.listmap))
 	for i, id := range s.listFrontendIDs {
 		lists[i] = s.listmap[id]

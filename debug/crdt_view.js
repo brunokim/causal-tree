@@ -2,16 +2,32 @@
 // Connect each list partial state to its request.
 function prepareStates(log) {
     let states = []
-    let requests = []
+    let requests = {
+        'edit': [],
+        'fork': [],
+        'sync': [],
+    }
     for (let record of log) {
-        if (!record['Sites']) {
-            requests.push(record)
-            continue
+        let recordType = record['Type']
+        switch(recordType) {
+            case "edit":
+            case "fork":
+            case "sync":
+                requests[recordType].push(record['Request'])
+                break
+            case "editStep":
+            case "forkStep":
+            case "syncStep":
+                let requestType = recordType.slice(0, -4) // Remove 'Step' from type name.
+                let requestIndex = record['ReqIdx']
+                record['Request'] = requests[requestType][requestIndex]
+                // fallthrough
+            case "test":
+                states.push(record)
+                break
+            default:
+                throw new Error(`Unknown record type ${recordType}`)
         }
-        if (record['ReqIdx'] !== undefined) {
-            record['Request'] = requests[record['ReqIdx']]
-        }
-        states.push(record)
     }
     return states
 }
@@ -53,19 +69,29 @@ export class Crdt {
 
     render() {
         let state = this.state()
-        let title = state['Action']
-        if (!title && state['ReqIdx'] !== undefined && state['OpIdx'] !== undefined) {
-            let opIdx = state['OpIdx']
-            let op = state['Request'].ops[opIdx]
-            title = `Request #${state['ReqIdx']} @ ${opIdx} - ${op.op} ${op.ch}`
-        }
         $("#crdt")
             .html("")
             .append(this.controls())
             .append($("<div>")
                 .addClass("state")
-                .append($("<h2>").append(title))
+                .append($("<h2>").append(this.renderTitle(state)))
                 .append(this.renderSites(state['Sites'])))
+    }
+
+    renderTitle(state) {
+        switch(state['Type']) {
+            case 'test':
+                return state['Action']
+            case 'editStep':
+                let stepIndex = state['StepIdx']
+                let op = state['Request'].ops[stepIndex]
+                return `Edit request #${state['ReqIdx']} @ ${stepIndex} - ${op.op} ${op.ch} at list #${state['LocalIdx']}`
+            case 'forkStep':
+                return `Fork list #${state['LocalIdx']} into list #${state['RemoteIdx']}`
+            case 'syncStep':
+                return `Merge list #${state['LocalIdx']} from list #${state['RemoteIdx']}`
+        }
+        return ''
     }
 
     renderSites(sites) {
