@@ -19,6 +19,9 @@ var (
 	port          = flag.Int("port", 8009, "port to run server")
 	debug         = flag.Bool("debug", false, "whether to dump debug information. Default debug file is log_{{datetime}}.jsonl")
 	debugFilename = flag.String("debug_file", "", "file to dump debug information in JSONL format. Implies --debug")
+
+	staticDir = flag.String("static_dir", "", "Directory with static files")
+	debugDir  = flag.String("debug_dir", "", "Directory with static debug files")
 )
 
 // -----
@@ -74,24 +77,15 @@ func main() {
 	debugMsgs := runDebug()
 	s := newState(debugMsgs)
 
-	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir("../debug"))))
+	http.Handle("/", http.FileServer(http.Dir(*staticDir)))
+	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir(*debugDir))))
 	http.Handle("/edit", editHTTPHandler{s})
 	http.Handle("/fork", forkHTTPHandler{s})
 	http.Handle("/sync", syncHTTPHandler{s})
-	http.HandleFunc("/", handleFile)
 
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("Serving in %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
-}
-
-func handleFile(w http.ResponseWriter, req *http.Request) {
-	path := "." + req.URL.Path
-	if path == "./" {
-		path = "./static/index.html"
-	}
-	http.ServeFile(w, req, path)
-	log.Printf("%v", path)
 }
 
 // -----

@@ -1,4 +1,4 @@
-import { CrdtController } from "/js/crdt_controller.js";
+import { CrdtController } from "./crdt_controller.js";
 
 export class SitesController {
   constructor(container) {
