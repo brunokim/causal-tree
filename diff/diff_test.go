@@ -3,7 +3,7 @@ package diff_test
 import (
 	"testing"
 
-	"github.com/brunokim/crdt/diff"
+	"github.com/brunokim/causal-tree/diff"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )

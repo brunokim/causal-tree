@@ -4,10 +4,10 @@ Implementation of a causal tree replicated data type (RDT) in Go.
 
 ## Repository structure
 
-- rlist.go: replicated list data type implementation
-- diff/: string diff implementation in Go
-- debug/: web viewer of CRDT structure
-- cmd/demo/: demo server
+- `crdt/`: replicated data type implementation
+- `diff/`: string diff implementation
+- `debug/`: web viewer of CRDT structure
+- `cmd/demo/`: demo server
 
 ## Run demo
 
