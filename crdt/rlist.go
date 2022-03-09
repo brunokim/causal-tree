@@ -48,6 +48,8 @@ type AtomValue interface {
 	json.Marshaler
 	// AtomPriority returns where this atom should be placed compared with its siblings.
 	AtomPriority() int
+	// ValidateChild checks whether the given value can be appended as a child.
+	ValidateChild(child AtomValue) error
 }
 
 // RList is a replicated list data structure.
@@ -91,6 +93,9 @@ func siteIndex(sitemap []uuid.UUID, siteID uuid.UUID) int {
 
 // Returns the index of an atom within the weave.
 func (l *RList) atomIndex(atomID AtomID) int {
+	if atomID.Timestamp == 0 {
+		return -1
+	}
 	for i, atom := range l.Weave {
 		if atom.ID == atomID {
 			return i
@@ -204,9 +209,9 @@ func (id AtomID) remapSite(m indexMap) AtomID {
 // +------+
 
 // Fork a replicated list into an independent object.
-func (l *RList) Fork() *RList {
+func (l *RList) Fork() (*RList, error) {
 	if len(l.Sitemap)-1 >= math.MaxUint16 {
-		panic("fork: reached limit of sites")
+		return nil, SiteLimitExceeded{}
 	}
 	newSiteID := uuidv1()
 	i := siteIndex(l.Sitemap, newSiteID)
@@ -254,7 +259,7 @@ func (l *RList) Fork() *RList {
 		copy(remote.Yarns[i], yarn)
 	}
 	copy(remote.Sitemap, l.Sitemap)
-	return remote
+	return remote, nil
 }
 
 // +-------+
@@ -387,10 +392,6 @@ func (l *RList) Merge(remote *RList) {
 // Returns the upper bound (exclusive) of head's causal block, plus its children's indices.
 //
 // The causal block is defined as the contiguous range containing all of head's descendants.
-func (l *RList) causalBlock(headIndex int) (int, []int) {
-	return causalBlock(l.Weave, headIndex)
-}
-
 func causalBlock(weave []Atom, headIndex int) (int, []int) {
 	head := weave[headIndex]
 	var childIndices []int
@@ -412,7 +413,10 @@ func causalBlock(weave []Atom, headIndex int) (int, []int) {
 
 func (l *RList) isDeleted(atomID AtomID) bool {
 	i := l.atomIndex(atomID)
-	_, children := l.causalBlock(i)
+	if i < 0 {
+		return false
+	}
+	_, children := causalBlock(l.Weave, i)
 	for _, j := range children {
 		atom := l.Weave[j]
 		if _, ok := atom.Value.(Delete); ok {
@@ -431,6 +435,26 @@ func (l *RList) fixDeletedCursor() {
 	}
 }
 
+// +---------------------+
+// | Operations - Errors |
+// +---------------------+
+
+type SiteLimitExceeded struct{}
+type StateLimitExceeded struct{}
+type NoAtomToDelete struct{}
+
+func (SiteLimitExceeded) Error() string {
+	return fmt.Sprintf("reached limit of sites: %d", math.MaxUint16)
+}
+
+func (StateLimitExceeded) Error() string {
+	return fmt.Sprintf("reached limit of states: %d", math.MaxUint32)
+}
+
+func (NoAtomToDelete) Error() string {
+	return "no atom to delete"
+}
+
 // +------------+
 // | Operations |
 // +------------+
@@ -443,11 +467,18 @@ func (l *RList) insertAtomAtCursor(atom Atom) {
 	l.insertAtom(atom, index)
 }
 
-func (l *RList) addAtom(value AtomValue) AtomID {
+// Inserts the atom as a child of the cursor, and returns its ID.
+func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 	l.Timestamp++
 	if l.Timestamp == 0 {
 		// Overflow
-		panic("appending atom: reached limit of states")
+		return AtomID{}, StateLimitExceeded{}
+	}
+	if l.Cursor.Timestamp > 0 {
+		cursorAtom := l.getAtom(l.Cursor)
+		if err := cursorAtom.Value.ValidateChild(value); err != nil {
+			return AtomID{}, err
+		}
 	}
 	i := siteIndex(l.Sitemap, l.SiteID)
 	atomID := AtomID{
@@ -462,7 +493,7 @@ func (l *RList) addAtom(value AtomValue) AtomID {
 	}
 	l.insertAtomAtCursor(atom)
 	l.Yarns[i] = append(l.Yarns[i], atom)
-	return atomID
+	return atomID, nil
 }
 
 // +-------------------------+
@@ -502,15 +533,21 @@ func (l *RList) filterDeleted() []Atom {
 	return atoms
 }
 
+// Sets cursor to the given (list) position.
+//
+// If the index is out of range, it's clamped to the closest endpoint of the list.
+// That is, negative indices place the cursor before the first element, and indices
+// larger than the list place the cursor at the last element.
 func (l *RList) SetCursor(i int) {
 	if i < 0 {
 		l.Cursor = AtomID{}
 		return
 	}
 	atoms := l.filterDeleted()
-	if i < len(atoms) {
-		l.Cursor = atoms[i].ID
+	if i >= len(atoms) {
+		i = len(atoms) - 1
 	}
+	l.Cursor = atoms[i].ID
 }
 
 // +--------------------------+
@@ -529,14 +566,31 @@ func (v InsertChar) MarshalJSON() ([]byte, error) {
 }
 func (v InsertChar) String() string { return string([]rune{v.Char}) }
 
-// InsertCharAfter inserts a char after the cursor position.
-func (l *RList) InsertChar(ch rune) {
-	l.Cursor = l.addAtom(InsertChar{ch})
+func (v InsertChar) ValidateChild(child AtomValue) error {
+	switch child.(type) {
+	case InsertChar:
+		return nil
+	case Delete:
+		return nil
+	default:
+		return fmt.Errorf("invalid atom value after InsertChar: %T (%v)", child, child)
+	}
 }
 
-func (l *RList) InsertCharAt(ch rune, i int) {
+// InsertChar inserts a char after the cursor position and advances the cursor.
+func (l *RList) InsertChar(ch rune) error {
+	atomID, err := l.addAtom(InsertChar{ch})
+	if err != nil {
+		return err
+	}
+	l.Cursor = atomID
+	return nil
+}
+
+// InsertCharAt inserts a char after the given (list) position.
+func (l *RList) InsertCharAt(ch rune, i int) error {
 	l.SetCursor(i)
-	l.InsertChar(ch)
+	return l.InsertChar(ch)
 }
 
 // +---------------------+
@@ -552,18 +606,26 @@ func (v Delete) MarshalJSON() ([]byte, error) {
 }
 func (v Delete) String() string { return "⌫ " }
 
-// DeleteChar deletes the char before the cursor position.
-func (l *RList) DeleteChar() {
-	if l.Cursor.Timestamp == 0 {
-		panic("delete char: no atom to delete")
-	}
-	l.addAtom(Delete{})
-	l.Cursor = l.getAtom(l.Cursor).Cause
+func (v Delete) ValidateChild(child AtomValue) error {
+	return fmt.Errorf("invalid atom value after Delete: %T (%v)", child, child)
 }
 
-func (l *RList) DeleteCharAt(i int) {
+// DeleteChar deletes the char at the cursor position and .
+func (l *RList) DeleteChar() error {
+	if l.Cursor.Timestamp == 0 {
+		return NoAtomToDelete{}
+	}
+	if _, err := l.addAtom(Delete{}); err != nil {
+		return err
+	}
+	l.fixDeletedCursor()
+	return nil
+}
+
+// DeleteCharAt deletes the char at the given (list) position.
+func (l *RList) DeleteCharAt(i int) error {
 	l.SetCursor(i)
-	l.DeleteChar()
+	return l.DeleteChar()
 }
 
 // +------------+

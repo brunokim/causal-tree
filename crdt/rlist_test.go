@@ -92,6 +92,11 @@ func (op operation) String() string {
 }
 
 func runOperations(t *testing.T, ops []operation) []*RList {
+	must := func(err error) {
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+	}
 	lists := []*RList{NewRList()}
 	f, err := setupTestFile(t.Name())
 	if err != nil {
@@ -101,20 +106,22 @@ func runOperations(t *testing.T, ops []operation) []*RList {
 		list := lists[op.local]
 		switch op.op {
 		case insertChar:
-			list.InsertChar(op.char)
+			must(list.InsertChar(op.char))
 		case deleteChar:
-			list.DeleteChar()
+			must(list.DeleteChar())
 		case setCursor:
 			list.SetCursor(op.pos)
 		case insertCharAt:
-			list.InsertCharAt(op.char, op.pos)
+			must(list.InsertCharAt(op.char, op.pos))
 		case deleteCharAt:
-			list.DeleteCharAt(op.pos)
+			must(list.DeleteCharAt(op.pos))
 		case fork:
 			if op.remote != len(lists) {
 				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(lists))
 			}
-			lists = append(lists, list.Fork())
+			remote, err := list.Fork()
+			must(err)
+			lists = append(lists, remote)
 		case merge:
 			list.Merge(lists[op.remote])
 		case check:

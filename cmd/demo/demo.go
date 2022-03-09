@@ -203,7 +203,13 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 		fmt.Fprintf(w, "new remote frontend ID already exists: %q", req.RemoteID)
 		return
 	}
-	s.listmap[req.RemoteID] = s.listmap[req.LocalID].Fork()
+	remote, err := s.listmap[req.LocalID].Fork()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "fork error: %v", err)
+		return
+	}
+	s.listmap[req.RemoteID] = remote
 	s.listFrontendIDs = append(s.listFrontendIDs, req.RemoteID)
 	log.Printf("%s: fork      = %s", req.LocalID, req.RemoteID)
 
