@@ -391,3 +391,23 @@ func TestDeleteAfterMerge(t *testing.T) {
 		{op: check, local: 0, str: "E"},
 	})
 }
+
+func TestInsertsAtSamePosition(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	runOperations(t, []operation{
+		// Create site inserting all letters at the same position.
+		{op: insertCharAt, char: 'd', pos: -1},
+		{op: insertCharAt, char: 'e', pos: -1},
+		{op: insertCharAt, char: 's', pos: -1},
+		{op: insertCharAt, char: 's', pos: -1},
+		{op: insertCharAt, char: 'e', pos: -1},
+		{op: insertCharAt, char: 'r', pos: -1},
+		{op: insertCharAt, char: 't', pos: -1},
+		{op: insertCharAt, char: 's', pos: -1},
+		{op: check, str: "stressed"},
+	})
+}

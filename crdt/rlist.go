@@ -460,9 +460,30 @@ func (NoAtomToDelete) Error() string {
 // +------------+
 
 func (l *RList) insertAtomAtCursor(atom Atom) {
+	if l.Cursor.Timestamp == 0 {
+		// Cursor is at initial position.
+		l.insertAtom(atom, 0)
+		return
+	}
+	// Search for position in weave that atom should be inserted, in a way that it's sorted relative to
+	// other children in descending order.
+	//
+	//                                  causal block of cursor
+	//                      ------------------------------------------------
+	// Weave:           ... [cursor] [child1] ... [child2] ... [child3] ... [not child]
+	// Weave indices:          c0       c1           c2           c3           end
+	// Child positions:                  0            1            2
+	c0 := l.atomIndex(l.Cursor)
+	end, children := causalBlock(l.Weave, c0)
+	pos := sort.Search(len(children), func(pos int) bool {
+		child := l.Weave[children[pos]]
+		return child.Compare(atom) <= 0
+	})
 	var index int
-	if l.Cursor.Timestamp > 0 {
-		index = l.atomIndex(l.Cursor) + 1
+	if pos == len(children) {
+		index = end
+	} else {
+		index = children[pos]
 	}
 	l.insertAtom(atom, index)
 }
