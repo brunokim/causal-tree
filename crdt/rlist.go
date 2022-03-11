@@ -1,3 +1,10 @@
+/*
+Package crdt provides primitives to operate on replicated data types.
+
+Replicated data types are structured such that they can be copied across multiple sites
+in a distributed environment, mutated independently at each site, and they still may be
+merged back without conflicts.
+*/
 package crdt
 
 import (
