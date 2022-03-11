@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -211,7 +212,7 @@ func (id AtomID) remapSite(m indexMap) AtomID {
 // Fork a replicated list into an independent object.
 func (l *RList) Fork() (*RList, error) {
 	if len(l.Sitemap)-1 >= math.MaxUint16 {
-		return nil, SiteLimitExceeded{}
+		return nil, ErrSiteLimitExceeded
 	}
 	newSiteID := uuidv1()
 	i := siteIndex(l.Sitemap, newSiteID)
@@ -439,21 +440,12 @@ func (l *RList) fixDeletedCursor() {
 // | Operations - Errors |
 // +---------------------+
 
-type SiteLimitExceeded struct{}
-type StateLimitExceeded struct{}
-type NoAtomToDelete struct{}
-
-func (SiteLimitExceeded) Error() string {
-	return fmt.Sprintf("reached limit of sites: %d", math.MaxUint16)
-}
-
-func (StateLimitExceeded) Error() string {
-	return fmt.Sprintf("reached limit of states: %d", math.MaxUint32)
-}
-
-func (NoAtomToDelete) Error() string {
-	return "no atom to delete"
-}
+// Errors returned by RList operations
+var (
+	ErrSiteLimitExceeded  = errors.New("reached limit of sites: 2¹⁶ (65.536)")
+	ErrStateLimitExceeded = errors.New("reached limit of states: 2³² (4.294.967.296)")
+	ErrNoAtomToDelete     = errors.New("can't delete empty atom")
+)
 
 // +------------+
 // | Operations |
@@ -493,7 +485,7 @@ func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 	l.Timestamp++
 	if l.Timestamp == 0 {
 		// Overflow
-		return AtomID{}, StateLimitExceeded{}
+		return AtomID{}, ErrStateLimitExceeded
 	}
 	if l.Cursor.Timestamp > 0 {
 		cursorAtom := l.getAtom(l.Cursor)
@@ -634,7 +626,7 @@ func (v Delete) ValidateChild(child AtomValue) error {
 // DeleteChar deletes the char at the cursor position and .
 func (l *RList) DeleteChar() error {
 	if l.Cursor.Timestamp == 0 {
-		return NoAtomToDelete{}
+		return ErrNoAtomToDelete
 	}
 	if _, err := l.addAtom(Delete{}); err != nil {
 		return err
