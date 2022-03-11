@@ -360,12 +360,13 @@ func (l *RList) Merge(remote *RList) {
 	// 4. Merge yarns.
 	for i, yarn := range remote.Yarns {
 		i := remoteRemap.get(i)
-		startIndex := len(yarns[i])
-		if len(yarn) > len(yarns[i]) {
+		start := len(yarns[i])
+		end := len(yarn)
+		if end > start {
 			// Grow yarn to accomodate remote atoms.
-			yarns[i] = append(yarns[i], make([]Atom, len(yarn)-len(yarns[i]))...)
+			yarns[i] = append(yarns[i], make([]Atom, end-start)...)
 		}
-		for j := startIndex; j < len(yarn); j++ {
+		for j := start; j < end; j++ {
 			atom := yarn[j].remapSite(remoteRemap)
 			yarns[i][j] = atom
 		}
