@@ -93,6 +93,8 @@ func NewRList() *RList {
 }
 
 // Returns the index where a site is (or should be) in the sitemap.
+//
+// Time complexity: O(log(sites))
 func siteIndex(sitemap []uuid.UUID, siteID uuid.UUID) int {
 	return sort.Search(len(sitemap), func(i int) bool {
 		return bytes.Compare(sitemap[i][:], siteID[:]) >= 0
@@ -100,6 +102,8 @@ func siteIndex(sitemap []uuid.UUID, siteID uuid.UUID) int {
 }
 
 // Returns the index of an atom within the weave.
+//
+// Time complexity: O(atoms)
 func (l *RList) atomIndex(atomID AtomID) int {
 	if atomID.Timestamp == 0 {
 		return -1
@@ -113,11 +117,15 @@ func (l *RList) atomIndex(atomID AtomID) int {
 }
 
 // Gets an atom from yarns.
+//
+// Time complexity: O(1)
 func (l *RList) getAtom(atomID AtomID) Atom {
 	return l.Yarns[atomID.Site][atomID.Index]
 }
 
 // Inserts an atom in the given weave index.
+//
+// Time complexity: O(atoms)
 func (l *RList) insertAtom(atom Atom, i int) {
 	l.Weave = append(l.Weave, Atom{})
 	copy(l.Weave[i+1:], l.Weave[i:])
@@ -217,6 +225,8 @@ func (id AtomID) remapSite(m indexMap) AtomID {
 // +------+
 
 // Fork a replicated list into an independent object.
+//
+// Time complexity: O(atoms)
 func (l *RList) Fork() (*RList, error) {
 	if len(l.Sitemap)-1 >= math.MaxUint16 {
 		return nil, ErrSiteLimitExceeded
@@ -274,6 +284,7 @@ func (l *RList) Fork() (*RList, error) {
 // | Merge |
 // +-------+
 
+// Time complexity: O(sites * log(sites))
 func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
 	if len(s1) < len(s2) {
 		s1, s2 = s2, s1
@@ -294,6 +305,7 @@ func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
 	return s
 }
 
+// Time complexity: O(atoms^2) / O(atoms*(avg. block size))
 func mergeWeaves(w1, w2 []Atom) []Atom {
 	var i, j int
 	var weave []Atom
@@ -319,11 +331,11 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 		} else {
 			// Atoms are concurrent; append first causal block, according to heads' order.
 			if a1.Compare(a2) >= 0 {
-				n1, _ := causalBlock(w1, i)
+				n1 := i + causalBlockSize(w1[i:])
 				weave = append(weave, w1[i:n1]...)
 				i = n1
 			} else {
-				n2, _ := causalBlock(w2, j)
+				n2 := j + causalBlockSize(w2[j:])
 				weave = append(weave, w2[j:n2]...)
 				j = n2
 			}
@@ -398,43 +410,72 @@ func (l *RList) Merge(remote *RList) {
 
 // -----
 
-// Returns the upper bound (exclusive) of head's causal block, plus its children's indices.
+// Invokes the closure f with each atom of the causal block. Returns the number of atoms visited.
 //
-// The causal block is defined as the contiguous range containing all of head's descendants.
-func causalBlock(weave []Atom, headIndex int) (int, []int) {
-	head := weave[headIndex]
-	var childIndices []int
-	for i := headIndex + 1; i < len(weave); i++ {
-		atom := weave[i]
-		if atom.Cause == head.ID {
-			childIndices = append(childIndices, i)
-			continue
+// The closure should return 'false' to cut the traversal short, as in a 'break' statement. Otherwise, return true.
+//
+// The causal block is defined as the contiguous range containing the head and all of its descendents.
+//
+// Time complexity: O(atoms) / O(avg. block size)
+func walkCausalBlock(block []Atom, f func(Atom) bool) int {
+	if len(block) == 0 {
+		return 0
+	}
+	head := block[0]
+	for i, atom := range block[1:] {
+		if atom.Cause.Timestamp < head.ID.Timestamp {
+			// First atom whose parent has a lower timestamp (older) than head is the
+			// end of the causal block.
+			return i + 1
 		}
-		parentTimestamp := atom.Cause.Timestamp
-		if parentTimestamp < head.ID.Timestamp {
-			// First atom whose parent has a lower timestamp (older) than head is the end
-			// of the causal block.
-			return i, childIndices
+		if !f(atom) {
+			break
 		}
 	}
-	return len(weave), childIndices
+	return len(block)
 }
 
+// Invokes the closure f with each direct children of the block's head.
+//
+// The index i corresponds to the index on the causal block, not on the child's order.
+func walkChildren(block []Atom, f func(Atom) bool) {
+	walkCausalBlock(block, func(atom Atom) bool {
+		if atom.Cause == block[0].ID {
+			return f(atom)
+		}
+		return true
+	})
+}
+
+// Returns the size of the causal block, including its head.
+func causalBlockSize(block []Atom) int {
+	return walkCausalBlock(block, func(atom Atom) bool { return true })
+}
+
+// Returns whether the atom is deleted.
+//
+// Time complexity: O(atoms) / O(avg. block size)
 func (l *RList) isDeleted(atomID AtomID) bool {
 	i := l.atomIndex(atomID)
 	if i < 0 {
 		return false
 	}
-	_, children := causalBlock(l.Weave, i)
-	for _, j := range children {
-		atom := l.Weave[j]
-		if _, ok := atom.Value.(Delete); ok {
-			return true
+	var isDeleted bool
+	// TODO: currently, the deleted atom has the highest priority. We should
+	// cut the traversal short if it isn't possible that the atom is deleted.
+	walkChildren(l.Weave[i:], func(child Atom) bool {
+		if _, ok := child.Value.(Delete); ok {
+			isDeleted = true
+			return false
 		}
-	}
-	return false
+		return true
+	})
+	return isDeleted
 }
 
+// Ensure list's cursor isn't deleted, finding the first non-deleted ancestor.
+//
+// Time complexity: O(atoms^2) / O((avg. tree height) * (avg. block size))
 func (l *RList) fixDeletedCursor() {
 	for {
 		if !l.isDeleted(l.Cursor) {
@@ -459,6 +500,7 @@ var (
 // | Operations |
 // +------------+
 
+// Time complexity: O(atoms) / O(atoms + (avg. block size))
 func (l *RList) insertAtomAtCursor(atom Atom) {
 	if l.Cursor.Timestamp == 0 {
 		// Cursor is at initial position.
@@ -471,24 +513,28 @@ func (l *RList) insertAtomAtCursor(atom Atom) {
 	//                                  causal block of cursor
 	//                      ------------------------------------------------
 	// Weave:           ... [cursor] [child1] ... [child2] ... [child3] ... [not child]
-	// Weave indices:          c0       c1           c2           c3           end
-	// Child positions:                  0            1            2
+	// Block indices:           0         1          c2'          c3'           end'
+	// Weave indices:          c0        c1          c2           c3            end
 	c0 := l.atomIndex(l.Cursor)
-	end, children := causalBlock(l.Weave, c0)
-	pos := sort.Search(len(children), func(pos int) bool {
-		child := l.Weave[children[pos]]
-		return child.Compare(atom) <= 0
+	var pos, i int
+	walkCausalBlock(l.Weave[c0:], func(a Atom) bool {
+		i++
+		if a.Cause == l.Cursor && a.Compare(atom) < 0 && pos == 0 {
+			// a is the first child smaller than atom.
+			pos = i
+		}
+		return true
 	})
-	var index int
-	if pos == len(children) {
-		index = end
-	} else {
-		index = children[pos]
+	index := c0 + i + 1
+	if pos > 0 {
+		index = c0 + pos
 	}
 	l.insertAtom(atom, index)
 }
 
 // Inserts the atom as a child of the cursor, and returns its ID.
+//
+// Time complexity: O(atoms + log(sites))
 func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 	l.Timestamp++
 	if l.Timestamp == 0 {
@@ -521,6 +567,7 @@ func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 // | Operations - Set cursor |
 // +-------------------------+
 
+// Time complexity: O(atoms^2)
 func (l *RList) filterDeleted() []Atom {
 	atoms := make([]Atom, len(l.Weave))
 	hasDeleted := false
@@ -530,7 +577,7 @@ func (l *RList) filterDeleted() []Atom {
 			atoms[i] = atom
 		case Delete:
 			hasDeleted = true
-			j := l.atomIndex(atom.Cause)
+			j := l.atomIndex(atom.Cause) // O(atoms)
 			atoms[i] = Atom{}
 			atoms[j] = Atom{}
 		default:
@@ -541,7 +588,7 @@ func (l *RList) filterDeleted() []Atom {
 		// Cheap optimization for case where there are no deletions.
 		return atoms
 	}
-	// Move chars to fill in holes of invalid runes.
+	// Move chars to fill in holes of empty atoms.
 	deleted := 0
 	for i, atom := range atoms {
 		if atom.ID.Timestamp == 0 {

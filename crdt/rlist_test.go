@@ -46,9 +46,9 @@ func setupTestFile(name string) (*os.File, error) {
 // check <local> <str>               -- check that the contents of 'local' spell 'str'.
 //
 // Lists are referred by their order of creation, NOT by their sitemap index.
-// The fork operation requires specifying the correct index, even if it could be
+// The fork operation requires specifying the correct remote index, even if it can be
 // inferred from the number of already created lists, just to improve readability.
-// 'list-position' refers to the position in the *resulting* list, not the weave.
+// 'list-position' refers to the position in the *resulting* list, not in the weave.
 
 type operationType int
 
