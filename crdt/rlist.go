@@ -567,24 +567,24 @@ func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 // | Operations - Set cursor |
 // +-------------------------+
 
-// Time complexity: O(atoms^2)
+// Time complexity: O(atoms)
 func (l *RList) filterDeleted() []Atom {
 	atoms := make([]Atom, len(l.Weave))
-	hasDeleted := false
+	copy(atoms, l.Weave)
+	indices := make(map[AtomID]int)
+	var hasDelete bool
 	for i, atom := range l.Weave {
-		switch atom.Value.(type) {
-		case InsertChar:
-			atoms[i] = atom
-		case Delete:
-			hasDeleted = true
-			j := l.atomIndex(atom.Cause) // O(atoms)
+		indices[atom.ID] = i
+		if _, ok := atom.Value.(Delete); ok {
+			hasDelete = true
+			// Deletion must always come after deleted atom, so
+			// indices map must have the cause location.
+			deletedAtomIdx := indices[atom.Cause]
 			atoms[i] = Atom{}
-			atoms[j] = Atom{}
-		default:
-			panic(fmt.Sprintf("filterWeave: unexpected atom value type %T (%v)", atom.Value, atom.Value))
+			atoms[deletedAtomIdx] = Atom{}
 		}
 	}
-	if !hasDeleted {
+	if !hasDelete {
 		// Cheap optimization for case where there are no deletions.
 		return atoms
 	}
