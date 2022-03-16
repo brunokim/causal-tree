@@ -2,6 +2,7 @@
 function prepareStates(log) {
   let states = [];
   let requests = {
+    load: [],
     edit: [],
     fork: [],
     sync: [],
@@ -9,11 +10,13 @@ function prepareStates(log) {
   for (let record of log) {
     let recordType = record["Type"];
     switch (recordType) {
+      case "load":
       case "edit":
       case "fork":
       case "sync":
         requests[recordType].push(record["Request"]);
         break;
+      case "loadStep":
       case "editStep":
       case "forkStep":
       case "syncStep":
@@ -83,6 +86,8 @@ export class Crdt {
     switch (state["Type"]) {
       case "test":
         return state["Action"];
+      case "loadStep":
+        return `Load lists #${state["ReqIdx"]}`;
       case "editStep":
         let stepIndex = state["StepIdx"];
         let op = state["Request"].ops[stepIndex];
@@ -141,6 +146,7 @@ export class Crdt {
 
   renderAtoms(weave, cursor) {
     let atoms = [];
+    weave = weave || [];
     for (let atom of weave) {
       atoms.push(this.renderAtom(atom, cursor));
     }

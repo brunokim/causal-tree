@@ -1,17 +1,21 @@
 import { diff } from "./diff.js";
 
 export class CrdtController {
-  constructor(parent_controller) {
-    this.id = crypto.randomUUID();
+  constructor(parent_controller, id, content) {
+    this.id = id || crypto.randomUUID();
     this.parent_controller = parent_controller;
     this.view = null;
-    this.content = "";
+    this.content = content || "";
   }
 
   render() {
     this.view = $("<div>")
       .addClass("crdt")
-      .append($("<textarea>").on("input", (evt) => this.textInput(evt)))
+      .append(
+        $("<textarea>")
+          .val(this.content)
+          .on("input", (evt) => this.textInput(evt))
+      )
       .append(
         $("<button>")
           .append("Fork")
@@ -90,8 +94,22 @@ export class CrdtController {
   }
 
   fork() {
-    let sibling = this.parent_controller.newCrdt();
-    sibling.content = this.content;
+    let body = { local: this.id };
+    fetch("/fork", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+      .then((response) => response.json())
+      .then((json) => this.handleForkResponse(json))
+      .catch((err) => console.log(err));
+  }
+
+  handleForkResponse(list) {
+    let sibling = this.parent_controller.newCrdt(list.id, list.content);
 
     this.parent_controller.connect(this.id, sibling.id);
     this.renderSyncArea();
@@ -105,24 +123,5 @@ export class CrdtController {
     textarea2.prop("selectionStart", textarea1.prop("selectionStart"));
     textarea2.prop("selectionEnd", textarea1.prop("selectionEnd"));
     textarea2.prop("selectionDirection", textarea1.prop("selectionDirection"));
-
-    let body = { local: this.id, remote: sibling.id };
-    fetch("/fork", {
-      method: "POST",
-      headers: {
-        Accept: "*/*",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    })
-      .then((response) => response.text())
-      .then((text) => this.handleForkResponse(text))
-      .catch((err) => console.log(err));
-  }
-
-  handleForkResponse(text) {
-    if (text) {
-      console.log(`WARNING: ${this.id}: expected empty response, got ${text}`);
-    }
   }
 }

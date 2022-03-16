@@ -8,8 +8,14 @@ export class SitesController {
     this.graph = {};
   }
 
-  newCrdt() {
-    let crdt = new CrdtController(this);
+  handleLoadResponse(resp) {
+    for (let list of resp.lists) {
+      this.newCrdt(list.id, list.content);
+    }
+  }
+
+  newCrdt(id, content) {
+    let crdt = new CrdtController(this, id, content);
     this.crdts.push(crdt);
     this.graph[crdt.id] = { inc: new Set(), out: new Set() };
 

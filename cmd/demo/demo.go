@@ -1,5 +1,18 @@
 package main
 
+// Example session:
+//  1) User loads demo home webpage (/load)
+//  2) Server answers with all current lists, their IDs, contents and connections.
+//  3) User edits content for a site (/edit #1)
+//  4) User edits content for a site (/edit #2)
+//  5) Server answers edit #1, content is compared at that moment in time.
+//  6) Server answers edit #2, latest content is compared.
+//  7) User forks a site (/fork)
+//  8) Server answers with ID and content of new site, as well as everyone's connection.
+//  9) User changes connection (/connect)
+// 10) User merges two lists (/sync)
+// 11) Server responds with new content for merged list.
+
 import (
 	"encoding/json"
 	"flag"
@@ -8,6 +21,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -40,33 +54,56 @@ type debugMessage struct {
 
 // -----
 
+type listinfo struct {
+	id    string
+	site  *crdt.RList
+	mu    *sync.Mutex
+	order int
+}
+
 type state struct {
 	sync.Mutex
 
 	debugMsgs chan<- debugMessage
 
-	listmap         map[string]*crdt.RList
-	listFrontendIDs []string
+	listmap sync.Map // map[string]listinfo
+	maplen  int
 
+	numLoadRequests int
 	numEditRequests int
 	numForkRequests int
 	numSyncRequests int
 }
 
 func newState(debugMsgs chan<- debugMessage) *state {
+	site := crdt.NewRList()
+	siteID := site.SiteID.String()
+	list := listinfo{
+		id:    siteID,
+		site:  site,
+		mu:    &sync.Mutex{},
+		order: 0,
+	}
+	var listmap sync.Map
+	listmap.Store(siteID, list)
 	return &state{
 		debugMsgs: debugMsgs,
-		listmap:   make(map[string]*crdt.RList),
+		listmap:   listmap,
+		maplen:    1,
 	}
 }
 
-func index(y string, xs []string) int {
-	for i, x := range xs {
-		if x == y {
-			return i
-		}
-	}
-	return len(xs)
+func (s *state) listinfos() []listinfo {
+	var lists []listinfo
+	s.listmap.Range(func(key, val interface{}) bool {
+		list := val.(listinfo)
+		lists = append(lists, list)
+		return true
+	})
+	sort.Slice(lists, func(i, j int) bool {
+		return lists[i].order < lists[j].order
+	})
+	return lists
 }
 
 // -----
@@ -79,6 +116,7 @@ func main() {
 
 	http.Handle("/", http.FileServer(http.Dir(*staticDir)))
 	http.Handle("/debug/", http.StripPrefix("/debug", http.FileServer(http.Dir(*debugDir))))
+	http.Handle("/load", loadHTTPHandler{s})
 	http.Handle("/edit", editHTTPHandler{s})
 	http.Handle("/fork", forkHTTPHandler{s})
 	http.Handle("/sync", syncHTTPHandler{s})
@@ -86,6 +124,66 @@ func main() {
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("Serving in %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+// -----
+
+type listResponse struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+}
+
+type loadResponse struct {
+	Lists []listResponse `json:"lists"`
+}
+
+type loadHTTPHandler struct {
+	s *state
+}
+
+func (h loadHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	h.s.handleLoad(w)
+}
+
+func (s *state) handleLoad(w http.ResponseWriter) {
+	s.writeDebug(map[string]interface{}{
+		"Type":    "load",
+		"Request": "",
+	})
+	defer s.syncDebug()
+	log.Printf("load")
+	//
+	s.Lock()
+	numRequests := s.numLoadRequests
+	s.numLoadRequests++
+	s.Unlock()
+	// Build response containing all lists.
+	var resp loadResponse
+	lists := s.listinfos()
+	resp.Lists = make([]listResponse, len(lists))
+	for i, list := range lists {
+		resp.Lists[i] = listResponse{
+			ID:      list.id,
+			Content: list.site.AsString(),
+		}
+	}
+	bs, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("Error marshaling load response: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "load error: %v", err)
+		return
+	}
+	// Write response and update internal state.
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(bs)
+	// Write debug info.
+	s.writeDebug(map[string]interface{}{
+		"Type":    "loadStep",
+		"ReqIdx":  numRequests,
+		"StepIdx": 0,
+		"Sites":   s.debugLists(),
+	})
 }
 
 // -----
@@ -116,18 +214,28 @@ func (h editHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
-	s.Lock()
-	defer s.Unlock()
 	s.writeDebug(map[string]interface{}{
 		"Type":    "edit",
 		"Request": req,
 	})
-
+	defer s.syncDebug()
+	// Retrieve list from ID and acquire its lock.
 	id := req.ID
-	if _, ok := s.listmap[id]; !ok {
-		s.listmap[id] = crdt.NewRList()
-		s.listFrontendIDs = append(s.listFrontendIDs, id)
+	val, ok := s.listmap.Load(id)
+	if !ok {
+		log.Printf("Unknown list ID: %s", id)
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "edit error: %q not found", id)
+		return
 	}
+	list := val.(listinfo)
+	list.mu.Lock()
+	defer list.mu.Unlock()
+	// Get ID of this edit call.
+	s.Lock()
+	numRequests := s.numEditRequests
+	s.numEditRequests++
+	s.Unlock()
 	// Execute operations in list.
 	var i int
 	for j, op := range req.Ops {
@@ -136,39 +244,35 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 			i++
 		case "insert":
 			ch, _ := utf8.DecodeRuneInString(op.Char)
-			s.listmap[id].InsertCharAt(ch, i-1)
+			list.site.InsertCharAt(ch, i-1)
 			log.Printf("%s: operation = insertCharAt %c %d", id, ch, i-1)
 			i++
 		case "delete":
-			s.listmap[id].DeleteCharAt(i)
+			list.site.DeleteCharAt(i)
 			log.Printf("%s: operation = deleteCharAt %d", id, i)
 		}
 		// Dump lists into debug file.
 		if op.Op != "keep" {
 			s.writeDebug(map[string]interface{}{
 				"Type":     "editStep",
-				"ReqIdx":   s.numEditRequests,
+				"ReqIdx":   numRequests,
 				"StepIdx":  j,
 				"Sites":    s.debugLists(),
-				"LocalIdx": index(id, s.listFrontendIDs),
+				"LocalIdx": list.order,
 			})
 		}
 	}
-	content := s.listmap[id].AsString()
-	log.Printf("%s: value     = %s", id, content)
-
+	// Write response with current list content.
+	content := list.site.AsString()
 	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, content)
-
-	s.syncDebug()
-	s.numEditRequests++
+	log.Printf("%s: value     = %s", id, content)
 }
 
 // -----
 
 type forkRequest struct {
-	LocalID  string `json:"local"`
-	RemoteID string `json:"remote"`
+	LocalID string `json:"local"`
 }
 
 type forkHTTPHandler struct {
@@ -186,43 +290,68 @@ func (h forkHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
-	s.Lock()
-	defer s.Unlock()
 	s.writeDebug(map[string]interface{}{
 		"Type":    "fork",
 		"Request": req,
 	})
-
-	if _, ok := s.listmap[req.LocalID]; !ok {
+	defer s.syncDebug()
+	// Retrieve list from ID and acquire its lock.
+	id := req.LocalID
+	val, ok := s.listmap.Load(id)
+	if !ok {
+		log.Printf("Unknown list ID: %s", id)
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "unknown local frontend ID %q", req.LocalID)
+		fmt.Fprintf(w, "fork error: %q not found", id)
 		return
 	}
-	if _, ok := s.listmap[req.RemoteID]; ok {
-		w.WriteHeader(http.StatusPreconditionFailed)
-		fmt.Fprintf(w, "new remote frontend ID already exists: %q", req.RemoteID)
-		return
-	}
-	remote, err := s.listmap[req.LocalID].Fork()
+	list := val.(listinfo)
+	list.mu.Lock()
+	defer list.mu.Unlock()
+	// Get sequence number of this fork call.
+	s.Lock()
+	order := s.maplen
+	numRequests := s.numForkRequests
+	s.numForkRequests++
+	s.maplen++
+	s.Unlock()
+	// Fork list and include it in the listmap.
+	remote, err := list.site.Fork()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "fork error: %v", err)
 		return
 	}
-	s.listmap[req.RemoteID] = remote
-	s.listFrontendIDs = append(s.listFrontendIDs, req.RemoteID)
-	log.Printf("%s: fork      = %s", req.LocalID, req.RemoteID)
-
+	remoteID := remote.SiteID.String()
+	s.listmap.Store(remoteID, listinfo{
+		id:    remoteID,
+		site:  remote,
+		mu:    &sync.Mutex{},
+		order: order,
+	})
+	log.Printf("%s: fork      = %s", list.site.SiteID, remote.SiteID)
+	// Write response
+	resp := listResponse{
+		ID:      remoteID,
+		Content: remote.AsString(),
+	}
+	bs, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("Error marshaling fork response: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "fork error: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(bs)
+	// Write debug info.
 	s.writeDebug(map[string]interface{}{
 		"Type":      "forkStep",
-		"ReqIdx":    s.numForkRequests,
+		"ReqIdx":    numRequests,
 		"StepIdx":   0,
 		"Sites":     s.debugLists(),
-		"LocalIdx":  index(req.LocalID, s.listFrontendIDs),
-		"RemoteIdx": index(req.RemoteID, s.listFrontendIDs),
+		"LocalIdx":  list.order,
+		"RemoteIdx": order,
 	})
-	s.numForkRequests++
-	s.syncDebug()
 }
 
 // -----
@@ -247,44 +376,46 @@ func (h syncHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
-	s.Lock()
-	defer s.Unlock()
 	s.writeDebug(map[string]interface{}{
 		"Type":    "sync",
 		"Request": req,
 	})
-
-	local, ok := s.listmap[req.LocalID]
+	defer s.syncDebug()
+	//
+	s.Lock()
+	numRequests := s.numSyncRequests
+	s.numSyncRequests++
+	s.Unlock()
+	//
+	val, ok := s.listmap.Load(req.LocalID)
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "unknown local frontend ID %q", req.LocalID)
+		fmt.Fprintf(w, "unknown ID %q", req.LocalID)
 		return
 	}
+	local := val.(listinfo)
 	for i, remoteID := range req.RemoteIDs {
-		remote, ok := s.listmap[remoteID]
+		val, ok := s.listmap.Load(remoteID)
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprintf(w, "unknown remote frontend ID: %q", remoteID)
 			return
 		}
-		local.Merge(remote)
+		remote := val.(listinfo)
+		local.site.Merge(remote.site)
 		log.Printf("%s: merge     = %s", req.LocalID, remoteID)
-
+		// Write debug info.
 		s.writeDebug(map[string]interface{}{
 			"Type":      "syncStep",
-			"ReqIdx":    s.numSyncRequests,
+			"ReqIdx":    numRequests,
 			"StepIdx":   i,
 			"Sites":     s.debugLists(),
-			"LocalIdx":  index(req.LocalID, s.listFrontendIDs),
-			"RemoteIdx": index(remoteID, s.listFrontendIDs),
+			"LocalIdx":  local.order,
+			"RemoteIdx": remote.order,
 		})
 	}
-
 	w.Header().Set("Content-Type", "text/plain")
-	io.WriteString(w, local.AsString())
-
-	s.syncDebug()
-	s.numSyncRequests++
+	io.WriteString(w, local.site.AsString())
 }
 
 // -----
@@ -293,9 +424,10 @@ func (s *state) debugLists() []*crdt.RList {
 	if !s.isDebug() {
 		return nil
 	}
-	lists := make([]*crdt.RList, len(s.listmap))
-	for i, id := range s.listFrontendIDs {
-		lists[i] = s.listmap[id]
+	listinfos := s.listinfos()
+	lists := make([]*crdt.RList, len(listinfos))
+	for i, info := range listinfos {
+		lists[i] = info.site
 	}
 	return lists
 }
