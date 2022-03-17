@@ -1,3 +1,9 @@
+// This demo simulates several parallel editors in a single web page, forking and syncing their work.
+// The state for the web page is kept on this server, where all merging operations are made.
+//
+// We assume that there is no message loss or out-of-order network shenanigans for this demo.
+// An actual, multi-agent edit fest requires a more robust assumption (or, preferrably, that
+// the CRDTs are also implemented in the client for powerful syncing).
 package main
 
 // Example session:
@@ -9,9 +15,10 @@ package main
 //  6) Server answers edit #2, latest content is compared.
 //  7) User forks a site (/fork)
 //  8) Server answers with ID and content of new site, as well as everyone's connection.
-//  9) User changes connection (/connect)
-// 10) User merges two lists (/sync)
-// 11) Server responds with new content for merged list.
+//  9) User merges two lists (/sync)
+// 10) Server responds with new content for merged list.
+//
+// Note that connection state is not kept in the server, only on the client.
 
 import (
 	"encoding/json"
@@ -61,6 +68,12 @@ type listinfo struct {
 	order int
 }
 
+func sortListinfos(lists []listinfo) {
+	sort.Slice(lists, func(i, j int) bool {
+		return lists[i].order < lists[j].order
+	})
+}
+
 type state struct {
 	sync.Mutex
 
@@ -100,9 +113,7 @@ func (s *state) listinfos() []listinfo {
 		lists = append(lists, list)
 		return true
 	})
-	sort.Slice(lists, func(i, j int) bool {
-		return lists[i].order < lists[j].order
-	})
+	sortListinfos(lists)
 	return lists
 }
 
@@ -402,7 +413,11 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 			return
 		}
 		remote := val.(listinfo)
+
+		lockAll(local, remote)
 		local.site.Merge(remote.site)
+		unlockAll(local, remote)
+
 		log.Printf("%s: merge     = %s", req.LocalID, remoteID)
 		// Write debug info.
 		s.writeDebug(map[string]interface{}{
@@ -416,6 +431,24 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, local.site.AsString())
+}
+
+// -----
+
+// Lock mutexes in ascending order.
+func lockAll(lists ...listinfo) {
+	sortListinfos(lists)
+	for _, list := range lists {
+		list.mu.Lock()
+	}
+}
+
+// Unlock mutexes in descending order.
+func unlockAll(lists ...listinfo) {
+	sortListinfos(lists)
+	for i := len(lists) - 1; i >= 0; i-- {
+		lists[i].mu.Unlock()
+	}
 }
 
 // -----
