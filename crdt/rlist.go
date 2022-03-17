@@ -65,13 +65,12 @@ operation is not terribly costly, and the array reads almost like the structure 
   # END ASCII ART
   # ALT TEXT: Sequence of atoms in an array, representing the same string as before. Each atom is composed
               of three elements: ID, cause, and content. IDs are given sequentially, from 01 to 17.
-              From 01 to 08, all atoms are sorted by ID, with contents that spell "THIS_IS_". Their causes
-              are always the atom to its left.
+              From 01 to 08, all atoms are sorted by ID, with contents that spell "THIS_IS_".
               To the right of 08, we have the sequence of IDs from 13 to 17, with contents that spell
-              "VERY_". The cause of ID 13 is the atom 08, while for the others is the atom to their left.
+              "VERY_". The cause of ID 13 is the atom 08.
               Finally, to the right of ID 17 is the sequence of atoms from 09 to 12, with contents that
-              spell "NICE". The cause of ID 09 is the atom 08, while the others have as cause the
-              atom to their left.
+              spell "NICE". The cause of ID 09 is also the atom 08.
+              The first atom has no cause, and all others have as cause the atom to its left.
 */
 
 var (
@@ -237,7 +236,8 @@ func (a Atom) Compare(other Atom) int {
 
 // Map storing conversion between indices.
 // Conversion from an index to itself are not stored.
-// Queries for an index that was not inserted or stored return the index itself.
+// An empty map represents an identity mapping, where every index maps to itself.
+// Queries for an index that was not inserted or stored return the same index.
 type indexMap map[int]int
 
 func (m indexMap) set(i, j int) {
@@ -336,28 +336,35 @@ func (l *RList) Fork() (*RList, error) {
 // | Merge |
 // +-------+
 
-// Time complexity: O(sites * log(sites))
+// Time complexity: O(sites)
 func mergeSitemaps(s1, s2 []uuid.UUID) []uuid.UUID {
-	if len(s1) < len(s2) {
-		s1, s2 = s2, s1
-	}
-	s := make([]uuid.UUID, len(s1), len(s1)+len(s2))
-	copy(s, s1)
-	for _, site := range s2 {
-		i := sort.Search(len(s), func(i int) bool {
-			return bytes.Compare(s[i][:], site[:]) >= 0
-		})
-		if i < len(s) && s[i] == site {
-			continue
+	var i, j int
+	s := make([]uuid.UUID, 0, len(s1)+len(s2))
+	for i < len(s1) && j < len(s2) {
+		id1, id2 := s1[i], s2[j]
+		order := bytes.Compare(id1[:], id2[:])
+		if order < 0 {
+			s = append(s, id1)
+			i++
+		} else if order > 0 {
+			s = append(s, id2)
+			j++
+		} else {
+			s = append(s, id1)
+			i++
+			j++
 		}
-		s = append(s, uuid.Nil)
-		copy(s[i+1:], s[i:])
-		s[i] = site
+	}
+	if i < len(s1) {
+		s = append(s, s1[i:]...)
+	}
+	if j < len(s2) {
+		s = append(s, s2[j:]...)
 	}
 	return s
 }
 
-// Time complexity: O(atoms^2) / O(atoms*(avg. block size))
+// Time complexity: O(atoms)
 func mergeWeaves(w1, w2 []Atom) []Atom {
 	var i, j int
 	var weave []Atom
@@ -404,10 +411,15 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 
 // Merge updates the current state with that of another remote list.
 // Note that merge does not move the cursor.
+//
+// Time complexity: O(atoms^2) + O(sites*log(sites))
 func (l *RList) Merge(remote *RList) {
 	// 1. Merge sitemaps.
+	// Time complexity: O(sites)
 	sitemap := mergeSitemaps(l.Sitemap, remote.Sitemap)
+
 	// 2. Compute site index remapping.
+	// Time complexity: O(sites*log(sites))
 	localRemap := make(indexMap)
 	remoteRemap := make(indexMap)
 	for i, site := range l.Sitemap {
@@ -416,19 +428,30 @@ func (l *RList) Merge(remote *RList) {
 	for i, site := range remote.Sitemap {
 		remoteRemap.set(i, siteIndex(sitemap, site))
 	}
+
 	// 3. Remap atoms from local.
+	// Time complexity: O(atoms)
 	yarns := make([][]Atom, len(sitemap))
-	for i, yarn := range l.Yarns {
-		i := localRemap.get(i)
-		yarns[i] = make([]Atom, len(yarn))
-		for j, atom := range yarn {
-			yarns[i][j] = atom.remapSite(localRemap)
+	if len(localRemap) > 0 {
+		for i, yarn := range l.Yarns {
+			i := localRemap.get(i)
+			yarns[i] = make([]Atom, len(yarn))
+			for j, atom := range yarn {
+				yarns[i][j] = atom.remapSite(localRemap)
+			}
+		}
+		for i, atom := range l.Weave {
+			l.Weave[i] = atom.remapSite(localRemap)
+		}
+	} else {
+		for i, yarn := range l.Yarns {
+			yarns[i] = make([]Atom, len(yarn))
+			copy(yarns[i], yarn)
 		}
 	}
-	for i, atom := range l.Weave {
-		l.Weave[i] = atom.remapSite(localRemap)
-	}
+
 	// 4. Merge yarns.
+	// Time complexity: O(atoms)
 	for i, yarn := range remote.Yarns {
 		i := remoteRemap.get(i)
 		start := len(yarns[i])
@@ -442,20 +465,25 @@ func (l *RList) Merge(remote *RList) {
 			yarns[i][j] = atom
 		}
 	}
+
 	// 5. Merge weaves.
+	// Time complexity: O(atoms)
 	remoteWeave := make([]Atom, len(remote.Weave))
 	for i, atom := range remote.Weave {
 		remoteWeave[i] = atom.remapSite(remoteRemap)
 	}
 	l.Weave = mergeWeaves(l.Weave, remoteWeave)
-	//
+
+	// Move created stuff to this list.
 	l.Yarns = yarns
 	l.Sitemap = sitemap
 	if l.Timestamp < remote.Timestamp {
 		l.Timestamp = remote.Timestamp
 	}
 	l.Timestamp++
+
 	// 6. Fix cursor if necessary.
+	// Time complexity: O(atoms^2)
 	l.Cursor = l.Cursor.remapSite(localRemap)
 	l.fixDeletedCursor()
 }
