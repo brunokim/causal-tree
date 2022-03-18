@@ -74,7 +74,7 @@ operation is not terribly costly, and the array reads almost like the structure 
 */
 
 var (
-	uuidv1 = randomUUIDv1 // For testing
+	uuidv1 = randomUUIDv1 // Stubbed for mocking in mocks_test.go
 )
 
 // +-----------------------+

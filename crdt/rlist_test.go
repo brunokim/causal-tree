@@ -1,4 +1,4 @@
-package crdt
+package crdt_test
 
 import (
 	"encoding/json"
@@ -6,20 +6,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/brunokim/causal-tree/crdt"
 	"github.com/google/uuid"
 )
-
-func setupUUIDs(uuids []uuid.UUID) func() {
-	var i int
-	oldUUIDv1 := uuidv1
-	teardown := func() { uuidv1 = oldUUIDv1 }
-	uuidv1 = func() uuid.UUID {
-		uuid := uuids[i]
-		i++
-		return uuid
-	}
-	return teardown
-}
 
 func setupTestFile(name string) (*os.File, error) {
 	os.MkdirAll("testdata", 0777)
@@ -91,13 +80,13 @@ func (op operation) String() string {
 	return ""
 }
 
-func runOperations(t *testing.T, ops []operation) []*RList {
+func runOperations(t *testing.T, ops []operation) []*crdt.RList {
 	must := func(err error) {
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
 	}
-	lists := []*RList{NewRList()}
+	lists := []*crdt.RList{crdt.NewRList()}
 	f, err := setupTestFile(t.Name())
 	if err != nil {
 		t.Log(err)
@@ -155,11 +144,11 @@ func runOperations(t *testing.T, ops []operation) []*RList {
 // -----
 
 func TestRList(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	//
@@ -209,14 +198,14 @@ func TestRList(t *testing.T) {
 }
 
 func TestBackwardsClock(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		// UUIDs don't progress with increasing timestamp: 1,5,2,4,3
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000005-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000004-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	// C - O - O - P
@@ -258,11 +247,11 @@ func TestBackwardsClock(t *testing.T) {
 }
 
 func TestUnknownRemoteYarn(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	// Site #0: A - B -----------------------.- *
@@ -295,11 +284,11 @@ func TestUnknownRemoteYarn(t *testing.T) {
 }
 
 func TestDeleteCursor(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000003-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	runOperations(t, []operation{
@@ -325,9 +314,9 @@ func TestDeleteCursor(t *testing.T) {
 }
 
 func TestSetCursor(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	runOperations(t, []operation{
@@ -347,10 +336,10 @@ func TestSetCursor(t *testing.T) {
 }
 
 func TestDeleteAfterMerge(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	runOperations(t, []operation{
@@ -393,9 +382,9 @@ func TestDeleteAfterMerge(t *testing.T) {
 }
 
 func TestInsertsAtSamePosition(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	runOperations(t, []operation{
@@ -413,10 +402,10 @@ func TestInsertsAtSamePosition(t *testing.T) {
 }
 
 func TestViewAt(t *testing.T) {
-	teardown := setupUUIDs([]uuid.UUID{
+	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
-	})
+	)
 	defer teardown()
 
 	lists := runOperations(t, []operation{
