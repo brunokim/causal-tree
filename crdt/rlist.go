@@ -565,6 +565,199 @@ func (l *RList) fixDeletedCursor() {
 	}
 }
 
+// +-------------+
+// + Time travel |
+// +-------------+
+
+type indexAtom struct {
+	i    int
+	atom Atom
+}
+
+// Returns the position in the idxs array with the max atom.
+//
+// Time complexity: O(sites)
+func maxAtomPos(idxs []indexAtom) int {
+	pos := -1
+	for j, idx := range idxs {
+		if idx.i < 0 {
+			continue
+		}
+		if pos < 0 {
+			pos = j
+		}
+		if idx.atom.Compare(idxs[pos].atom) >= 0 {
+			pos = j
+		}
+	}
+	return pos
+}
+
+// Merge all yarns into a weave in a streaming fashion.
+//
+// Time complexity: O((causal blocks) * sites), causal blocks = atoms/(avg. block size)
+func mergeYarns(yarns ...[]Atom) []Atom {
+	// idxs keeps track of the index we're at, at each yarn.
+	// If a yarn is exhausted, we set its index to -1.
+	idxs := make([]indexAtom, len(yarns))
+	var numExhausted int
+	for i, yarn := range yarns {
+		if len(yarn) > 0 {
+			idxs[i] = indexAtom{i: 0, atom: yarn[0]}
+		} else {
+			idxs[i] = indexAtom{i: -1}
+			numExhausted++
+		}
+	}
+	// Initialize weave with capacity for the required number of atoms.
+	var numAtoms int
+	for _, yarn := range yarns {
+		numAtoms += len(yarn)
+	}
+	weave := make([]Atom, 0, numAtoms)
+	// At each iteration, picks the yarn with max head atom, and append its causal block
+	// to the weave.
+	for numExhausted < len(yarns) {
+		pos := maxAtomPos(idxs) // TODO: use a priority queue for O(log(sites)) complexity
+		yarn := yarns[pos]
+		i := idxs[pos].i
+		end := i + causalBlockSize(yarn[i:])
+		weave = append(weave, yarn[i:end]...)
+		// Check if yarn is now exhausted.
+		if end < len(yarn) {
+			idxs[pos].i = end
+			idxs[pos].atom = yarn[end]
+		} else {
+			idxs[pos].i = -1
+			numExhausted++
+		}
+	}
+	return weave
+}
+
+// Weft is a clock that stores the timestamp of each site of a RList.
+type Weft []uint32
+
+// Returns -1 if less, +1 if greater, 0 if concurrent.
+//
+// If they have different sizes, assumes that the smaller one
+// is padded with 0s to match the length of the larger one.
+func (w Weft) Compare(other Weft) int {
+	var isSmaller, isLarger bool
+	if len(w) < len(other) {
+		isSmaller = true
+		other = other[:len(w)]
+	}
+	if len(w) > len(other) {
+		isLarger = true
+		w = w[:len(other)]
+	}
+	var hasLess, hasGreater bool
+	for i, t1 := range w {
+		t2 := other[i]
+		if t1 < t2 {
+			hasLess = true
+		} else if t1 > t2 {
+			hasGreater = true
+		}
+	}
+	if hasLess && hasGreater {
+		return 0
+	}
+	if hasLess && !isLarger {
+		return -1
+	}
+	if hasGreater && !isSmaller {
+		return +1
+	}
+	return 0
+}
+
+// Checks that the weft is well-formed, not disconnecting atoms from their causes
+// in other sites.
+//
+// Time complexity: O(atoms)
+func (l *RList) checkWeft(weft Weft) ([]int, error) {
+	if len(l.Yarns) != len(weft) {
+		return nil, ErrWeftInvalidLength
+	}
+	// Initialize limits at each yarn.
+	limits := make([]int, len(weft))
+	for i, yarn := range l.Yarns {
+		limits[i] = len(yarn)
+	}
+	// Look for max timestamp at each yarn.
+	for i, yarn := range l.Yarns {
+		tmax := weft[i]
+		for j, atom := range yarn {
+			if atom.ID.Timestamp > tmax {
+				limits[i] = j
+				break
+			}
+		}
+	}
+	// Verify that all causes are present at the weft cut.
+	for i, yarn := range l.Yarns {
+		limit := limits[i]
+		for _, atom := range yarn[:limit] {
+			cause := atom.Cause
+			if int(cause.Index) >= limits[cause.Site] {
+				return nil, ErrWeftDisconnected
+			}
+		}
+	}
+	return limits, nil
+}
+
+func (l *RList) Now() Weft {
+	weft := make(Weft, len(l.Yarns))
+	for i, yarn := range l.Yarns {
+		n := len(yarn)
+		if n == 0 {
+			continue
+		}
+		weft[i] = yarn[n-1].ID.Timestamp
+	}
+	return weft
+}
+
+// ViewAt returns a view of the list in the provided time in the past.
+//
+// The time is represented with a weft, or the set of timestamps at each site we
+// want to view. We can't use a single clock for all of them.
+func (l *RList) ViewAt(weft Weft) (*RList, error) {
+	limits, err := l.checkWeft(weft)
+	if err != nil {
+		return nil, err
+	}
+	n := len(limits)
+	yarns := make([][]Atom, n)
+	for i, yarn := range l.Yarns {
+		yarns[i] = make([]Atom, limits[i])
+		copy(yarns[i], yarn)
+	}
+	weave := mergeYarns(yarns...)
+	sitemap := make([]uuid.UUID, n)
+	copy(sitemap, l.Sitemap)
+	// Set cursor, if it still exists in this view.
+	cursor := l.Cursor
+	if int(cursor.Index) >= limits[cursor.Site] {
+		cursor = AtomID{}
+	}
+	//
+	i := siteIndex(l.Sitemap, l.SiteID)
+	tmax := weft[i]
+	view := &RList{
+		Weave:     weave,
+		Cursor:    cursor,
+		Yarns:     yarns,
+		Sitemap:   sitemap,
+		SiteID:    l.SiteID,
+		Timestamp: tmax,
+	}
+	return view, nil
+}
+
 // +---------------------+
 // | Operations - Errors |
 // +---------------------+
@@ -574,6 +767,8 @@ var (
 	ErrSiteLimitExceeded  = errors.New("reached limit of sites: 2¹⁶ (65.536)")
 	ErrStateLimitExceeded = errors.New("reached limit of states: 2³² (4.294.967.296)")
 	ErrNoAtomToDelete     = errors.New("can't delete empty atom")
+	ErrWeftInvalidLength  = errors.New("weft length doesn't match with number of sites")
+	ErrWeftDisconnected   = errors.New("weft disconnects some atom from its cause")
 )
 
 // +------------+

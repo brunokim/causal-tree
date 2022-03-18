@@ -411,3 +411,46 @@ func TestInsertsAtSamePosition(t *testing.T) {
 		{op: check, str: "stressed"},
 	})
 }
+
+func TestViewAt(t *testing.T) {
+	teardown := setupUUIDs([]uuid.UUID{
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+	})
+	defer teardown()
+
+	lists := runOperations(t, []operation{
+		// Create site #0: abcd
+		{op: insertChar, local: 0, char: 'a'},
+		{op: insertChar, local: 0, char: 'b'},
+		{op: insertChar, local: 0, char: 'c'},
+		{op: insertChar, local: 0, char: 'd'},
+		{op: check, local: 0, str: "abcd"},
+		// Create site #1: abcd -> xabdy
+		{op: fork, local: 0, remote: 1},
+		{op: insertCharAt, local: 1, char: 'x', pos: -1},
+		{op: deleteCharAt, local: 1, pos: 3},
+		{op: insertCharAt, local: 1, char: 'y', pos: 3},
+		{op: check, local: 1, str: "xabdy"},
+		// Edit site #0: abcde -> abcdefg
+		{op: insertChar, local: 0, char: 'e'},
+		{op: insertChar, local: 0, char: 'f'},
+		{op: insertChar, local: 0, char: 'g'},
+		{op: check, local: 0, str: "abcdefg"},
+		// Merge site #1 -> site #0
+		{op: merge, local: 0, remote: 1},
+		{op: check, local: 0, str: "xabdyefg"},
+	})
+
+	l0 := lists[0]
+	weft := l0.Now()
+	want := "xabdyefg"
+	view, err := l0.ViewAt(weft)
+	if err != nil {
+		t.Fatalf("got err, want nil: %v", err)
+	}
+	got := view.AsString()
+	if got != want {
+		t.Errorf("got %q, want %q (weft: %v)", got, want, weft)
+	}
+}
