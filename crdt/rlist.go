@@ -569,72 +569,6 @@ func (l *RList) fixDeletedCursor() {
 // + Time travel |
 // +-------------+
 
-type indexAtom struct {
-	i    int
-	atom Atom
-}
-
-// Returns the position in the idxs array with the max atom.
-//
-// Time complexity: O(sites)
-func maxAtomPos(idxs []indexAtom) int {
-	pos := -1
-	for j, idx := range idxs {
-		if idx.i < 0 {
-			continue
-		}
-		if pos < 0 {
-			pos = j
-		}
-		if idx.atom.Compare(idxs[pos].atom) >= 0 {
-			pos = j
-		}
-	}
-	return pos
-}
-
-// Merge all yarns into a weave in a streaming fashion.
-//
-// Time complexity: O((causal blocks) * sites), causal blocks = atoms/(avg. block size)
-func mergeYarns(yarns ...[]Atom) []Atom {
-	// idxs keeps track of the index we're at, at each yarn.
-	// If a yarn is exhausted, we set its index to -1.
-	idxs := make([]indexAtom, len(yarns))
-	var numExhausted int
-	for i, yarn := range yarns {
-		if len(yarn) > 0 {
-			idxs[i] = indexAtom{i: 0, atom: yarn[0]}
-		} else {
-			idxs[i] = indexAtom{i: -1}
-			numExhausted++
-		}
-	}
-	// Initialize weave with capacity for the required number of atoms.
-	var numAtoms int
-	for _, yarn := range yarns {
-		numAtoms += len(yarn)
-	}
-	weave := make([]Atom, 0, numAtoms)
-	// At each iteration, picks the yarn with max head atom, and append its causal block
-	// to the weave.
-	for numExhausted < len(yarns) {
-		pos := maxAtomPos(idxs) // TODO: use a priority queue for O(log(sites)) complexity
-		yarn := yarns[pos]
-		i := idxs[pos].i
-		end := i + causalBlockSize(yarn[i:])
-		weave = append(weave, yarn[i:end]...)
-		// Check if yarn is now exhausted.
-		if end < len(yarn) {
-			idxs[pos].i = end
-			idxs[pos].atom = yarn[end]
-		} else {
-			idxs[pos].i = -1
-			numExhausted++
-		}
-	}
-	return weave
-}
-
 // Weft is a clock that stores the timestamp of each site of a RList.
 type Weft []uint32
 
@@ -673,16 +607,25 @@ func (w Weft) Compare(other Weft) int {
 	return 0
 }
 
+// The same as weft, but using yarn's indices instead of timestamps.
+type indexWeft []int
+
+// Returns whether the provided atom is present in the yarn's view.
+// The nil atom is always in view.
+func (ixs indexWeft) isInView(id AtomID) bool {
+	return int(id.Index) < ixs[id.Site] || id.Timestamp == 0
+}
+
 // Checks that the weft is well-formed, not disconnecting atoms from their causes
 // in other sites.
 //
 // Time complexity: O(atoms)
-func (l *RList) checkWeft(weft Weft) ([]int, error) {
+func (l *RList) checkWeft(weft Weft) (indexWeft, error) {
 	if len(l.Yarns) != len(weft) {
 		return nil, ErrWeftInvalidLength
 	}
 	// Initialize limits at each yarn.
-	limits := make([]int, len(weft))
+	limits := make(indexWeft, len(weft))
 	for i, yarn := range l.Yarns {
 		limits[i] = len(yarn)
 	}
@@ -700,8 +643,7 @@ func (l *RList) checkWeft(weft Weft) ([]int, error) {
 	for i, yarn := range l.Yarns {
 		limit := limits[i]
 		for _, atom := range yarn[:limit] {
-			cause := atom.Cause
-			if int(cause.Index) >= limits[cause.Site] {
+			if !limits.isInView(atom.Cause) {
 				return nil, ErrWeftDisconnected
 			}
 		}
@@ -709,6 +651,7 @@ func (l *RList) checkWeft(weft Weft) ([]int, error) {
 	return limits, nil
 }
 
+// Now returns the last known time at every site as a weft.
 func (l *RList) Now() Weft {
 	weft := make(Weft, len(l.Yarns))
 	for i, yarn := range l.Yarns {
@@ -725,6 +668,8 @@ func (l *RList) Now() Weft {
 //
 // The time is represented with a weft, or the set of timestamps at each site we
 // want to view. We can't use a single clock for all of them.
+//
+// Time complexity: O(atoms+sites)
 func (l *RList) ViewAt(weft Weft) (*RList, error) {
 	limits, err := l.checkWeft(weft)
 	if err != nil {
@@ -736,12 +681,17 @@ func (l *RList) ViewAt(weft Weft) (*RList, error) {
 		yarns[i] = make([]Atom, limits[i])
 		copy(yarns[i], yarn)
 	}
-	weave := mergeYarns(yarns...)
+	weave := make([]Atom, 0, len(l.Weave))
+	for _, atom := range l.Weave {
+		if limits.isInView(atom.ID) {
+			weave = append(weave, atom)
+		}
+	}
 	sitemap := make([]uuid.UUID, n)
 	copy(sitemap, l.Sitemap)
 	// Set cursor, if it still exists in this view.
 	cursor := l.Cursor
-	if int(cursor.Index) >= limits[cursor.Site] {
+	if !limits.isInView(cursor) {
 		cursor = AtomID{}
 	}
 	//

@@ -401,14 +401,10 @@ func TestInsertsAtSamePosition(t *testing.T) {
 	})
 }
 
-func TestViewAt(t *testing.T) {
-	teardown := crdt.MockUUIDs(
-		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
-		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
-	)
-	defer teardown()
+// -----
 
-	lists := runOperations(t, []operation{
+func setupTestView(t *testing.T) []*crdt.RList {
+	return runOperations(t, []operation{
 		// Create site #0: abcd
 		{op: insertChar, local: 0, char: 'a'},
 		{op: insertChar, local: 0, char: 'b'},
@@ -430,16 +426,82 @@ func TestViewAt(t *testing.T) {
 		{op: merge, local: 0, remote: 1},
 		{op: check, local: 0, str: "xabdyefg"},
 	})
+	// Now, max time is [9 9] for both sites.
+}
 
+func TestViewAt(t *testing.T) {
+	teardown := crdt.MockUUIDs(
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+	)
+	defer teardown()
+
+	lists := setupTestView(t)
 	l0 := lists[0]
-	weft := l0.Now()
-	want := "xabdyefg"
-	view, err := l0.ViewAt(weft)
-	if err != nil {
-		t.Fatalf("got err, want nil: %v", err)
+
+	tests := []struct {
+		weft crdt.Weft
+		want string
+	}{
+		// Now
+		{crdt.Weft{9, 9}, "xabdyefg"},
+		// Far future
+		{crdt.Weft{100, 100}, "xabdyefg"},
+		// "Undoing" actions of site #0
+		{crdt.Weft{8, 9}, "xabdyef"},
+		{crdt.Weft{7, 9}, "xabdye"},
+		{crdt.Weft{6, 9}, "xabdy"},
+		{crdt.Weft{5, 9}, "xabdy"},
+		{crdt.Weft{4, 8}, "xab"}, // Cutting 'd' from site #0 requires removing its child 'y' from site #1
+		{crdt.Weft{3, 7}, "xab"}, // Cutting 'c' from site #0 requires removing its delete child from site #1
+		{crdt.Weft{2, 7}, "xa"},
+		{crdt.Weft{1, 7}, "x"},
+		{crdt.Weft{0, 7}, "x"},
+		// "Undoing" actions of site #1
+		{crdt.Weft{9, 8}, "xabdefg"},
+		{crdt.Weft{9, 7}, "xabcdefg"},
+		{crdt.Weft{9, 6}, "abcdefg"},
+		{crdt.Weft{9, 5}, "abcdefg"},
+		{crdt.Weft{9, 4}, "abcdefg"},
+		{crdt.Weft{9, 3}, "abcdefg"},
+		{crdt.Weft{9, 2}, "abcdefg"},
+		{crdt.Weft{9, 1}, "abcdefg"},
+		{crdt.Weft{9, 0}, "abcdefg"},
 	}
-	got := view.AsString()
-	if got != want {
-		t.Errorf("got %q, want %q (weft: %v)", got, want, weft)
+	for _, test := range tests {
+		view, err := l0.ViewAt(test.weft)
+		if err != nil {
+			t.Fatalf("%v: got err, want nil: %v", test.weft, err)
+		}
+		got := view.AsString()
+		if got != test.want {
+			t.Errorf("%v: got %q, want %q", test.weft, got, test.want)
+		}
+	}
+}
+
+func TestViewAtError(t *testing.T) {
+	teardown := crdt.MockUUIDs(
+		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
+		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
+	)
+	defer teardown()
+
+	lists := setupTestView(t)
+	l0 := lists[0]
+
+	tests := []struct {
+		weft crdt.Weft
+	}{
+		// At timestamp 5 at site #0 we cut 'd', whose child 'y' in site #1 is at timestamp 9.
+		{crdt.Weft{4, 9}}, {crdt.Weft{3, 9}}, {crdt.Weft{2, 9}}, {crdt.Weft{1, 9}},
+		// At timestamp 4 at site #0 we cut 'c', whose delete child in site #1 is at timestamp 8.
+		{crdt.Weft{3, 8}}, {crdt.Weft{2, 8}}, {crdt.Weft{1, 8}},
+	}
+	for _, test := range tests {
+		view, err := l0.ViewAt(test.weft)
+		if err == nil {
+			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.AsString())
+		}
 	}
 }
