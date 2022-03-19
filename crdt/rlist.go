@@ -412,7 +412,7 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 // Merge updates the current state with that of another remote list.
 // Note that merge does not move the cursor.
 //
-// Time complexity: O(atoms^2) + O(sites*log(sites))
+// Time complexity: O(atoms^2 + sites*log(sites))
 func (l *RList) Merge(remote *RList) {
 	// 1. Merge sitemaps.
 	// Time complexity: O(sites)
@@ -570,6 +570,9 @@ func (l *RList) fixDeletedCursor() {
 // +-------------+
 
 // Weft is a clock that stores the timestamp of each site of a RList.
+//
+// In a distributed system it's not possible to observe the whole state at an absolute time,
+// but we can view the site's state at each site time.
 type Weft []uint32
 
 // Returns -1 if less, +1 if greater, 0 if concurrent.
@@ -664,10 +667,7 @@ func (l *RList) Now() Weft {
 	return weft
 }
 
-// ViewAt returns a view of the list in the provided time in the past.
-//
-// The time is represented with a weft, or the set of timestamps at each site we
-// want to view. We can't use a single clock for all of them.
+// ViewAt returns a view of the list in the provided time in the past, represented with a weft.
 //
 // Time complexity: O(atoms+sites)
 func (l *RList) ViewAt(weft Weft) (*RList, error) {
