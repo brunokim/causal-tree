@@ -575,19 +575,13 @@ func (l *RList) fixDeletedCursor() {
 // but we can view the site's state at each site time.
 type Weft []uint32
 
-// Returns -1 if less, +1 if greater, 0 if concurrent.
+// Compare returns -1, +1 and 0 if this is weft is less than, greater than, or concurrent
+// to the other, respectively.
 //
-// If they have different sizes, assumes that the smaller one
-// is padded with 0s to match the length of the larger one.
+// It panics if wefts have different sizes.
 func (w Weft) Compare(other Weft) int {
-	var isSmaller, isLarger bool
-	if len(w) < len(other) {
-		isSmaller = true
-		other = other[:len(w)]
-	}
-	if len(w) > len(other) {
-		isLarger = true
-		w = w[:len(other)]
+	if len(w) != len(other) {
+		panic(fmt.Sprintf("wefts have different sizes: %d (%v) != %d (%v)", len(w), w, len(other), other))
 	}
 	var hasLess, hasGreater bool
 	for i, t1 := range w {
@@ -601,10 +595,10 @@ func (w Weft) Compare(other Weft) int {
 	if hasLess && hasGreater {
 		return 0
 	}
-	if hasLess && !isLarger {
+	if hasLess {
 		return -1
 	}
-	if hasGreater && !isSmaller {
+	if hasGreater {
 		return +1
 	}
 	return 0
