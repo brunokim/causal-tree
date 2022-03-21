@@ -2,6 +2,10 @@
 
 Implementation of a causal tree replicated data type (RDT) in Go.
 
+## Requirements
+
+We use Go 1.18 for its fuzzing capabilities.
+
 ## Repository structure
 
 - `crdt/`: replicated data type implementation

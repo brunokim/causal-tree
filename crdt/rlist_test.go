@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/brunokim/causal-tree/crdt"
+	fuzz "github.com/google/gofuzz"
 	"github.com/google/uuid"
 )
 
@@ -504,4 +505,57 @@ func TestViewAtError(t *testing.T) {
 			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.AsString())
 		}
 	}
+}
+
+// -----
+
+func FuzzList(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var operations []operation
+		fuzz.NewFromGoFuzz(data).Fuzz(&operations)
+
+		lists := []*crdt.RList{crdt.NewRList()}
+		for _, op := range operations {
+			if op.local >= len(lists) {
+				return
+			}
+			list := lists[op.local]
+			switch op.op {
+			case insertChar:
+				if err := list.InsertChar(op.char); err != nil {
+					return
+				}
+			case deleteChar:
+				if err := list.DeleteChar(); err != nil {
+					return
+				}
+			case setCursor:
+				if err := list.SetCursor(op.pos); err != nil {
+					return
+				}
+			case insertCharAt:
+				if err := list.InsertCharAt(op.char, op.pos); err != nil {
+					return
+				}
+			case deleteCharAt:
+				if err := list.DeleteCharAt(op.pos); err != nil {
+					return
+				}
+			case fork:
+				if remote, err := list.Fork(); err != nil {
+					return
+				} else {
+					lists = append(lists, remote)
+				}
+			case merge:
+				if op.remote >= len(lists) {
+					return
+				} else {
+					list.Merge(lists[op.remote])
+				}
+			default:
+				return
+			}
+		}
+	})
 }
