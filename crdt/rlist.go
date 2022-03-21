@@ -717,6 +717,7 @@ var (
 	ErrSiteLimitExceeded  = errors.New("reached limit of sites: 2¹⁶ (65.536)")
 	ErrStateLimitExceeded = errors.New("reached limit of states: 2³² (4.294.967.296)")
 	ErrNoAtomToDelete     = errors.New("can't delete empty atom")
+	ErrCursorOutOfRange   = errors.New("cursor index out of range")
 	ErrWeftInvalidLength  = errors.New("weft length doesn't match with number of sites")
 	ErrWeftDisconnected   = errors.New("weft disconnects some atom from its cause")
 )
@@ -828,19 +829,21 @@ func (l *RList) filterDeleted() []Atom {
 
 // Sets cursor to the given (list) position.
 //
-// If the index is out of range, it's clamped to the closest endpoint of the list.
-// That is, negative indices place the cursor before the first element, and indices
-// larger than the list place the cursor at the last element.
-func (l *RList) SetCursor(i int) {
+// To insert an atom at the beginning, use i = -1.
+func (l *RList) SetCursor(i int) error {
 	if i < 0 {
-		l.Cursor = AtomID{}
-		return
+		if i == -1 {
+			l.Cursor = AtomID{}
+			return nil
+		}
+		return ErrCursorOutOfRange
 	}
 	atoms := l.filterDeleted()
 	if i >= len(atoms) {
-		i = len(atoms) - 1
+		return ErrCursorOutOfRange
 	}
 	l.Cursor = atoms[i].ID
+	return nil
 }
 
 // +--------------------------+
@@ -882,7 +885,9 @@ func (l *RList) InsertChar(ch rune) error {
 
 // InsertCharAt inserts a char after the given (list) position.
 func (l *RList) InsertCharAt(ch rune, i int) error {
-	l.SetCursor(i)
+	if err := l.SetCursor(i); err != nil {
+		return err
+	}
 	return l.InsertChar(ch)
 }
 
@@ -917,7 +922,9 @@ func (l *RList) DeleteChar() error {
 
 // DeleteCharAt deletes the char at the given (list) position.
 func (l *RList) DeleteCharAt(i int) error {
-	l.SetCursor(i)
+	if err := l.SetCursor(i); err != nil {
+		return err
+	}
 	return l.DeleteChar()
 }
 
