@@ -1,196 +1,13 @@
 package crdt_test
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	//	"regexp"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/brunokim/causal-tree/crdt"
 	"github.com/google/uuid"
 )
-
-func setupTestFile(name string) (*os.File, error) {
-	os.MkdirAll("testdata", 0777)
-	return os.Create(fmt.Sprintf("testdata/%s.jsonl", name))
-}
-
-// -----
-
-// Tests are structured as a sequence of operations on a list of lists.
-//
-// This indirection allows us to perform some actions for every mutation, like
-// dumping their internals to a file. Hopefully, it should also allow us to
-// somehow fuzz list manipulation.
-//
-// Operations are:
-//
-// insertChar <local> <char>         -- insert a char at cursor on list 'local'.
-// deleteChar <local>                -- delete the char at cursor on list 'local'.
-// setCursor <local> <pos>           -- set cursor at list-position 'pos' on list 'local'
-// insertCharAt <local> <char> <pos> -- insert a char at list-position 'pos' on list 'local'
-// deleteCharAt <local> <pos>        -- delete char at list-position 'pos' on list 'local'
-// fork <local> <remote>             -- fork list 'local' into list 'remote'.
-// merge <local> <remote>            -- merge list 'remote' into list 'local'.
-// check <local> <str>               -- check that the contents of 'local' spell 'str'.
-//
-// Lists are referred by their order of creation, NOT by their sitemap index.
-// The fork operation requires specifying the correct remote index, even if it can be
-// inferred from the number of already created lists, just to improve readability.
-// 'list-position' refers to the position in the *resulting* list, not in the weave.
-
-type operationType int
-
-const (
-	insertChar operationType = iota
-	deleteChar
-	setCursor
-	insertCharAt
-	deleteCharAt
-	fork
-	merge
-	check
-)
-
-var numBytes = map[operationType]int{
-	insertChar:   3, // insertChar local char
-	deleteChar:   2, // deleteChar local
-	setCursor:    3, // setCursor local pos
-	insertCharAt: 4, // insertCharAt local char pos
-	deleteCharAt: 3, // deleteCharAt local pos
-	fork:         2, // fork local
-	merge:        3, // merge local remote
-}
-
-type operation struct {
-	op            operationType
-	local, remote int
-	char          rune
-	pos           int
-	str           string
-}
-
-func parseOperation(bs []byte) (operation, []byte) {
-	if len(bs) == 0 {
-		return operation{}, nil
-	}
-	op := operationType(bs[0])
-	n, ok := numBytes[op]
-	if !ok || len(bs) < n {
-		return operation{}, nil
-	}
-	toIndex := func(b byte) int { return int(b) }
-	toChar := func(b byte) rune { return rune(b) + ' ' }
-	toPos := func(b byte) int { return int(b) - 1 }
-	result := operation{op: op, local: toIndex(bs[1])}
-	switch op {
-	case insertChar:
-		result.char = toChar(bs[2])
-	case deleteChar:
-		// Do nothing
-	case setCursor:
-		result.pos = toPos(bs[2])
-	case insertCharAt:
-		result.char = toChar(bs[2])
-		result.pos = toPos(bs[3])
-	case deleteCharAt:
-		result.pos = toPos(bs[2])
-	case fork:
-		// Do nothing
-	case merge:
-		result.remote = toIndex(bs[2])
-	default:
-		return operation{}, nil
-	}
-	return result, bs[n:]
-}
-
-func (op operation) String() string {
-	switch op.op {
-	case insertChar:
-		return fmt.Sprintf("insert %c at list #%d", op.char, op.local)
-	case deleteChar:
-		return fmt.Sprintf("delete char from list #%d", op.local)
-	case setCursor:
-		return fmt.Sprintf("set cursor @ %d at list #%d", op.pos, op.local)
-	case insertCharAt:
-		return fmt.Sprintf("insert %c @ %d at list #%d", op.char, op.pos, op.local)
-	case deleteCharAt:
-		return fmt.Sprintf("delete char @ %d from list #%d", op.pos, op.local)
-	case fork:
-		return fmt.Sprintf("fork list #%d into list #%d", op.local, op.remote)
-	case merge:
-		return fmt.Sprintf("merge list #%d into list #%d", op.remote, op.local)
-	}
-	return ""
-}
-
-func runOperations(t *testing.T, ops []operation) []*crdt.RList {
-	must := func(err error) {
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
-	}
-	lists := []*crdt.RList{crdt.NewRList()}
-	f, err := setupTestFile(t.Name())
-	if err != nil {
-		t.Log(err)
-	}
-	for i, op := range ops {
-		list := lists[op.local]
-		switch op.op {
-		case insertChar:
-			must(list.InsertChar(op.char))
-		case deleteChar:
-			must(list.DeleteChar())
-		case setCursor:
-			list.SetCursor(op.pos)
-		case insertCharAt:
-			must(list.InsertCharAt(op.char, op.pos))
-		case deleteCharAt:
-			must(list.DeleteCharAt(op.pos))
-		case fork:
-			if op.remote != len(lists) {
-				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(lists))
-			}
-			remote, err := list.Fork()
-			must(err)
-			lists = append(lists, remote)
-		case merge:
-			list.Merge(lists[op.remote])
-		case check:
-			if s := list.AsString(); s != op.str {
-				t.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
-			}
-		}
-		// Dump lists into testfile.
-		if f != nil && op.op != check {
-			bs, err := json.Marshal(map[string]interface{}{
-				"Type":   "test",
-				"Action": op.String(),
-				"Sites":  lists,
-			})
-			if err != nil {
-				t.Log(err)
-				f.Close()
-				f = nil
-			} else {
-				f.Write(bs)
-				f.WriteString("\n")
-			}
-		}
-	}
-	if f != nil {
-		f.Close()
-	}
-	return lists
-}
-
-// -----
 
 func TestRList(t *testing.T) {
 	teardown := crdt.MockUUIDs(
@@ -206,7 +23,7 @@ func TestRList(t *testing.T) {
 	//      |   |`- D - E - L
 	//      x   x
 	//
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Site #0: write CMD
 		{op: insertChar, local: 0, char: 'C'},
 		{op: insertChar, local: 0, char: 'M'},
@@ -261,7 +78,7 @@ func TestBackwardsClock(t *testing.T) {
 	//      `- D - E - . - I - O
 	//         |   |
 	//         x   x
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Create sites #0, #1, #2: C, CODE
 		{op: insertChar, local: 0, char: 'C'},
 		{op: fork, local: 0, remote: 1},
@@ -306,7 +123,7 @@ func TestUnknownRemoteYarn(t *testing.T) {
 	// Site #0: A - B -----------------------.- *
 	// Site #1:      `- C - D -------.- G - H'
 	// Site #2:              `- E - F'
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Create site #0: AB
 		{op: insertChar, local: 0, char: 'A'},
 		{op: insertChar, local: 0, char: 'B'},
@@ -340,7 +157,7 @@ func TestDeleteCursor(t *testing.T) {
 	)
 	defer teardown()
 
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Create site #0: AB
 		{op: insertChar, local: 0, char: 'A'},
 		{op: insertChar, local: 0, char: 'B'},
@@ -368,7 +185,7 @@ func TestSetCursor(t *testing.T) {
 	)
 	defer teardown()
 
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Create site #0: abcd
 		{op: insertCharAt, char: 'a', pos: -1},
 		{op: insertCharAt, char: 'b', pos: 0},
@@ -391,7 +208,7 @@ func TestDeleteAfterMerge(t *testing.T) {
 	)
 	defer teardown()
 
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Create site #0: abcd
 		{op: insertChar, local: 0, char: 'a'},
 		{op: insertChar, local: 0, char: 'b'},
@@ -436,7 +253,7 @@ func TestInsertsAtSamePosition(t *testing.T) {
 	)
 	defer teardown()
 
-	runOperations(t, []operation{
+	testOperations(t, []operation{
 		// Create site inserting all letters at the same position.
 		{op: insertCharAt, char: 'd', pos: -1},
 		{op: insertCharAt, char: 'e', pos: -1},
@@ -453,7 +270,7 @@ func TestInsertsAtSamePosition(t *testing.T) {
 // -----
 
 func setupTestView(t *testing.T) []*crdt.RList {
-	return runOperations(t, []operation{
+	return testOperations(t, []operation{
 		// Create site #0: abcd
 		{op: insertChar, local: 0, char: 'a'},
 		{op: insertChar, local: 0, char: 'b'},
@@ -557,83 +374,6 @@ func TestViewAtError(t *testing.T) {
 
 // -----
 
-func validateOperations(bs []byte) error {
-	lists := []*crdt.RList{crdt.NewRList()}
-	for len(bs) != 0 {
-		var op operation
-		op, bs = parseOperation(bs)
-		if op == (operation{}) {
-			return fmt.Errorf("parse error")
-		}
-		if op.local >= len(lists) {
-			return fmt.Errorf("invalid local index %d (len: %d), op: %v", op.local, len(lists), op)
-		}
-		list := lists[op.local]
-		switch op.op {
-		case insertChar:
-			if err := list.InsertChar(op.char); err != nil {
-				return fmt.Errorf("%v: %v", op, err)
-			}
-		case deleteChar:
-			if err := list.DeleteChar(); err != nil {
-				return fmt.Errorf("%v: %v", op, err)
-			}
-		case setCursor:
-			if err := list.SetCursor(op.pos); err != nil {
-				return fmt.Errorf("%v: %v", op, err)
-			}
-		case insertCharAt:
-			if err := list.InsertCharAt(op.char, op.pos); err != nil {
-				return fmt.Errorf("%v: %v", op, err)
-			}
-		case deleteCharAt:
-			if err := list.DeleteCharAt(op.pos); err != nil {
-				return fmt.Errorf("%v: %v", op, err)
-			}
-		case fork:
-			if remote, err := list.Fork(); err != nil {
-				return fmt.Errorf("%v: %v", op, err)
-			} else {
-				lists = append(lists, remote)
-			}
-		case merge:
-			if op.remote >= len(lists) {
-				return fmt.Errorf("invalid remote index %d (len: %d), op: %v", op.remote, len(lists), op)
-			} else {
-				list.Merge(lists[op.remote])
-			}
-		default:
-			return fmt.Errorf("invalid op %v", op.op)
-		}
-	}
-	return nil
-}
-
-func readFuzzData(filename string) ([]byte, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("error reading fuzz corpus sample: %w", err)
-	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) < 2 {
-		return nil, fmt.Errorf("expecting at least 2 lines in fuzz file %s", filename)
-	}
-	content := lines[1]
-	if !(strings.HasPrefix(content, `[]byte("`) && strings.HasSuffix(content, `")`)) {
-		return nil, fmt.Errorf(`expecting content enclosed by []byte("<content>"), got %s`, content)
-	}
-	start, end := len("[]byte("), len(content)-len(")")
-	text, err := strconv.Unquote(content[start:end])
-	if err != nil {
-		return nil, fmt.Errorf("invalid syntax for fuzz corpus %s: %w", content, err)
-	}
-	bs, err := strconv.Unquote(`"` + text + `"`)
-	if err != nil {
-		return nil, fmt.Errorf("invalid syntax for byte slice %s: %w", text, err)
-	}
-	return []byte(bs), nil
-}
-
 func TestValidateFuzzList(t *testing.T) {
 	f, err := os.Open("testdata/fuzz/FuzzList")
 	defer f.Close()
@@ -649,7 +389,11 @@ func TestValidateFuzzList(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading file %s failed: %v", file.Name(), err)
 		}
-		if err := validateOperations(data); err != nil {
+		ops, ok := decodeOperations(data)
+		if !ok {
+			t.Fatalf("can't decode data")
+		}
+		if err := validateOperations(ops); err != nil {
 			t.Errorf("execution of file %s failed: %v", file.Name(), err)
 		}
 	}
@@ -657,6 +401,8 @@ func TestValidateFuzzList(t *testing.T) {
 
 func FuzzList(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
-		validateOperations(data)
+		if ops, ok := decodeOperations(data); ok {
+			validateOperations(ops)
+		}
 	})
 }
