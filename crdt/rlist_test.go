@@ -1,6 +1,7 @@
 package crdt_test
 
 import (
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -404,5 +405,22 @@ func FuzzList(f *testing.F) {
 		if ops, ok := decodeOperations(data); ok {
 			validateOperations(ops)
 		}
+	})
+}
+
+func FuzzViewAt(f *testing.F) {
+	l, err := makeRandomList(rand.New(rand.NewSource(1740)))
+	if err != nil {
+		f.Fatalf("error making list: %v", err)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		weft := l.Now()
+		for i, x := range data {
+			if i >= len(weft) {
+				break
+			}
+			weft[i] = uint32(x)
+		}
+		l.ViewAt(weft)
 	})
 }

@@ -3,6 +3,7 @@ package crdt_test
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -275,4 +276,50 @@ func readFuzzData(filename string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid syntax for byte slice %s: %w", text, err)
 	}
 	return []byte(bs), nil
+}
+
+// -----
+
+func makeRandomList(r *rand.Rand) (*crdt.RList, error) {
+	local := crdt.NewRList()
+	const numChars = 100
+	const numRemotes = 10
+	// Insert 100 chars into local.
+	for i := 0; i < numChars; i++ {
+		if err := local.InsertChar('a'); err != nil {
+			return nil, err
+		}
+	}
+	// Make copy of local, that will be the base for all remotes.
+	localCopy, err := local.Fork()
+	if err != nil {
+		return nil, err
+	}
+	insertRandomChar := func(l *crdt.RList, i, j, n int) error {
+		ch := rune(j) + 'b'
+		listLen := n + i
+		pos := r.Intn(listLen+1) - 1 // Allow for -1 pos
+		return l.InsertCharAt(ch, pos)
+	}
+	// Create remote, insert 100 chars at random, then merge at local.
+	for j := 0; j < numRemotes; j++ {
+		remote, err := localCopy.Fork()
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < numChars; i++ {
+			if err := insertRandomChar(remote, i, j, numChars); err != nil {
+				return nil, err
+			}
+		}
+		local.Merge(remote)
+	}
+	// Add some more chars at random, totalling 1200 chars and timestamp ~300.
+	n := (numRemotes + 1) * numChars
+	for i := 0; i < numChars; i++ {
+		if err := insertRandomChar(local, i, numRemotes, n); err != nil {
+			return nil, err
+		}
+	}
+	return local, nil
 }
