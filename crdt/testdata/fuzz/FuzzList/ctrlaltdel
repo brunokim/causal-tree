@@ -1,0 +1,3 @@
+go test fuzz v1
+string("insertChar 0 C,insertChar 0 M,insertChar 0 D,fork 0 1,fork 1 2,deleteChar 0,deleteChar 0,insertChar 0 T,insertChar 0 R,insertChar 0 L,insertChar 1 A,insertChar 1 L,insertChar 1 T,insertChar 2 D,insertChar 2 E,insertChar 2 L,merge 0 1,merge 2 1,merge 2 0")
+

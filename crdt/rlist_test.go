@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/brunokim/causal-tree/crdt"
-	fuzz "github.com/google/gofuzz"
 	"github.com/google/uuid"
 )
 
@@ -53,12 +56,70 @@ const (
 	check
 )
 
+var (
+	insertCharRE   = regexp.MustCompile(`^insertChar (\d+) (.)$`)
+	deleteCharRE   = regexp.MustCompile(`^deleteChar (\d+)$`)
+	setCursorRE    = regexp.MustCompile(`^setCursor (\d+) (-1|\d+)$`)
+	insertCharAtRE = regexp.MustCompile(`^insertCharAt (\d+) (.) (-1|\d+)$`)
+	deleteCharAtRE = regexp.MustCompile(`^deleteCharAt (\d+) (\d+)$`)
+	forkRE         = regexp.MustCompile(`^fork (\d+) (\d+)$`)
+	mergeRE        = regexp.MustCompile(`^merge (\d+) (\d+)$`)
+)
+
 type operation struct {
 	op            operationType
 	local, remote int
 	char          rune
 	pos           int
 	str           string
+}
+
+func parseInt(text string) (int, bool) {
+	i, err := strconv.Atoi(text)
+	return i, (err == nil)
+}
+
+func parseChar(text string) rune {
+	return []rune(text)[0]
+}
+
+func parseOperation(text string) (operation, bool) {
+	if parts := insertCharRE.FindStringSubmatch(text); parts != nil {
+		local, ok := parseInt(parts[1])
+		char := parseChar(parts[2])
+		return operation{op: insertChar, local: local, char: char}, ok
+	}
+	if parts := deleteCharRE.FindStringSubmatch(text); parts != nil {
+		local, ok := parseInt(parts[1])
+		return operation{op: deleteChar, local: local}, ok
+	}
+	if parts := setCursorRE.FindStringSubmatch(text); parts != nil {
+		local, ok1 := parseInt(parts[1])
+		pos, ok2 := parseInt(parts[2])
+		return operation{op: setCursor, local: local, pos: pos}, ok1 && ok2
+	}
+	if parts := insertCharAtRE.FindStringSubmatch(text); parts != nil {
+		local, ok1 := parseInt(parts[1])
+		char := parseChar(parts[2])
+		pos, ok2 := parseInt(parts[3])
+		return operation{op: insertChar, local: local, char: char, pos: pos}, ok1 && ok2
+	}
+	if parts := deleteCharAtRE.FindStringSubmatch(text); parts != nil {
+		local, ok1 := parseInt(parts[1])
+		pos, ok2 := parseInt(parts[2])
+		return operation{op: insertChar, local: local, pos: pos}, ok1 && ok2
+	}
+	if parts := forkRE.FindStringSubmatch(text); parts != nil {
+		local, ok1 := parseInt(parts[1])
+		remote, ok2 := parseInt(parts[2])
+		return operation{op: fork, local: local, remote: remote}, ok1 && ok2
+	}
+	if parts := mergeRE.FindStringSubmatch(text); parts != nil {
+		local, ok1 := parseInt(parts[1])
+		remote, ok2 := parseInt(parts[2])
+		return operation{op: merge, local: local, remote: remote}, ok1 && ok2
+	}
+	return operation{}, false
 }
 
 func (op operation) String() string {
@@ -509,53 +570,101 @@ func TestViewAtError(t *testing.T) {
 
 // -----
 
-func FuzzList(f *testing.F) {
-	f.Fuzz(func(t *testing.T, data []byte) {
-		var operations []operation
-		fuzz.NewFromGoFuzz(data).Fuzz(&operations)
-
-		lists := []*crdt.RList{crdt.NewRList()}
-		for _, op := range operations {
-			if op.local >= len(lists) {
-				return
-			}
-			list := lists[op.local]
-			switch op.op {
-			case insertChar:
-				if err := list.InsertChar(op.char); err != nil {
-					return
-				}
-			case deleteChar:
-				if err := list.DeleteChar(); err != nil {
-					return
-				}
-			case setCursor:
-				if err := list.SetCursor(op.pos); err != nil {
-					return
-				}
-			case insertCharAt:
-				if err := list.InsertCharAt(op.char, op.pos); err != nil {
-					return
-				}
-			case deleteCharAt:
-				if err := list.DeleteCharAt(op.pos); err != nil {
-					return
-				}
-			case fork:
-				if remote, err := list.Fork(); err != nil {
-					return
-				} else {
-					lists = append(lists, remote)
-				}
-			case merge:
-				if op.remote >= len(lists) {
-					return
-				} else {
-					list.Merge(lists[op.remote])
-				}
-			default:
-				return
-			}
+func validateOperations(text string) error {
+	lists := []*crdt.RList{crdt.NewRList()}
+	for _, opStr := range strings.Split(text, ",") {
+		op, ok := parseOperation(opStr)
+		if !ok {
+			return fmt.Errorf("parse error at %v", op)
 		}
+		if op.local >= len(lists) {
+			return fmt.Errorf("invalid local index %d (len: %d), op: %v", op.local, len(lists), op)
+		}
+		list := lists[op.local]
+		switch op.op {
+		case insertChar:
+			if err := list.InsertChar(op.char); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
+			}
+		case deleteChar:
+			if err := list.DeleteChar(); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
+			}
+		case setCursor:
+			if err := list.SetCursor(op.pos); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
+			}
+		case insertCharAt:
+			if err := list.InsertCharAt(op.char, op.pos); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
+			}
+		case deleteCharAt:
+			if err := list.DeleteCharAt(op.pos); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
+			}
+		case fork:
+			if remote, err := list.Fork(); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
+			} else {
+				lists = append(lists, remote)
+			}
+		case merge:
+			if op.remote >= len(lists) {
+				return fmt.Errorf("invalid remote index %d (len: %d), op: %v", op.remote, len(lists), op)
+			} else {
+				list.Merge(lists[op.remote])
+			}
+		default:
+			return fmt.Errorf("invalid op %v", op.op)
+		}
+	}
+	return nil
+}
+
+func readFuzzText(filename string) (string, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return "", fmt.Errorf("error reading fuzz corpus sample: %w", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	if len(lines) < 2 {
+		return "", fmt.Errorf("expecting at least 2 lines in fuzz file %s", filename)
+	}
+	content := lines[1]
+	if !(strings.HasPrefix(content, `string("`) && strings.HasSuffix(content, `")`)) {
+		return "", fmt.Errorf(`expecting content enclosed by string("<content>"), got %s`, content)
+	}
+	start, end := len("string("), len(content)-len(")")
+	text, err := strconv.Unquote(content[start:end])
+	if err != nil {
+		return "", fmt.Errorf("invalid syntax for fuzz corpus %s: %w", content, err)
+	}
+	return text, nil
+}
+
+func TestValidateFuzzList(t *testing.T) {
+	f, err := os.Open("testdata/fuzz/FuzzList")
+	defer f.Close()
+	if err != nil {
+		t.Fatalf("error opening fuzz corpus directory: %v", err)
+	}
+	files, err := f.ReadDir(-1)
+	if err != nil {
+		t.Fatalf("error listing fuzz corpus: %v", err)
+	}
+	for _, file := range files {
+		text, err := readFuzzText(filepath.Join("testdata/fuzz/FuzzList", file.Name()))
+		if err != nil {
+			t.Fatalf("reading file %s failed: %v", file.Name(), err)
+		}
+		if err := validateOperations(text); err != nil {
+			t.Errorf("execution of file %s failed: %v", file.Name(), err)
+		}
+	}
+}
+
+func FuzzList(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		validateOperations(data)
 	})
 }
