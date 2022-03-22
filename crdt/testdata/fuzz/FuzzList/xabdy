@@ -1,2 +1,3 @@
 go test fuzz v1
-string("insertChar 0 a,insertChar 0 b,insertChar 0 c,insertChar 0 d,fork 0 1,insertCharAt 1 x -1,deleteCharAt 1 3,insertCharAt 1 y 3,setCursor 1 4,insertChar 0 e,insertChar 0 f,insertChar 0 g,merge 1 0,merge 0 1,insertChar 1 z")
+[]byte("\\x00\\x00\\x41\\x00\\x00\\x42\\x00\\x00\\x43\\x00\\x00\\x44\\x05\\x00\\x03\\x01\\x58\\x00\\x04\\x01\\x04\\x03\\x01\\x59\\x04\\x02\\x01\\x05\\x00\\x00\\x45\\x00\\x00\\x46\\x00\\x00\\x47\\x06\\x01\\x00\\x06\\x00\\x01\\x00\\x01\\x5a")
+

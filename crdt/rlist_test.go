@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	//	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -56,15 +56,15 @@ const (
 	check
 )
 
-var (
-	insertCharRE   = regexp.MustCompile(`^insertChar (\d+) (.)$`)
-	deleteCharRE   = regexp.MustCompile(`^deleteChar (\d+)$`)
-	setCursorRE    = regexp.MustCompile(`^setCursor (\d+) (-1|\d+)$`)
-	insertCharAtRE = regexp.MustCompile(`^insertCharAt (\d+) (.) (-1|\d+)$`)
-	deleteCharAtRE = regexp.MustCompile(`^deleteCharAt (\d+) (\d+)$`)
-	forkRE         = regexp.MustCompile(`^fork (\d+) (\d+)$`)
-	mergeRE        = regexp.MustCompile(`^merge (\d+) (\d+)$`)
-)
+var numBytes = map[operationType]int{
+	insertChar:   3, // insertChar local char
+	deleteChar:   2, // deleteChar local
+	setCursor:    3, // setCursor local pos
+	insertCharAt: 4, // insertCharAt local char pos
+	deleteCharAt: 3, // deleteCharAt local pos
+	fork:         2, // fork local
+	merge:        3, // merge local remote
+}
 
 type operation struct {
 	op            operationType
@@ -74,52 +74,39 @@ type operation struct {
 	str           string
 }
 
-func parseInt(text string) (int, bool) {
-	i, err := strconv.Atoi(text)
-	return i, (err == nil)
-}
-
-func parseChar(text string) rune {
-	return []rune(text)[0]
-}
-
-func parseOperation(text string) (operation, bool) {
-	if parts := insertCharRE.FindStringSubmatch(text); parts != nil {
-		local, ok := parseInt(parts[1])
-		char := parseChar(parts[2])
-		return operation{op: insertChar, local: local, char: char}, ok
+func parseOperation(bs []byte) (operation, []byte) {
+	if len(bs) == 0 {
+		return operation{}, nil
 	}
-	if parts := deleteCharRE.FindStringSubmatch(text); parts != nil {
-		local, ok := parseInt(parts[1])
-		return operation{op: deleteChar, local: local}, ok
+	op := operationType(bs[0])
+	n, ok := numBytes[op]
+	if !ok || len(bs) < n {
+		return operation{}, nil
 	}
-	if parts := setCursorRE.FindStringSubmatch(text); parts != nil {
-		local, ok1 := parseInt(parts[1])
-		pos, ok2 := parseInt(parts[2])
-		return operation{op: setCursor, local: local, pos: pos}, ok1 && ok2
+	toIndex := func(b byte) int { return int(b) }
+	toChar := func(b byte) rune { return rune(b) + ' ' }
+	toPos := func(b byte) int { return int(b) - 1 }
+	result := operation{op: op, local: toIndex(bs[1])}
+	switch op {
+	case insertChar:
+		result.char = toChar(bs[2])
+	case deleteChar:
+		// Do nothing
+	case setCursor:
+		result.pos = toPos(bs[2])
+	case insertCharAt:
+		result.char = toChar(bs[2])
+		result.pos = toPos(bs[3])
+	case deleteCharAt:
+		result.pos = toPos(bs[2])
+	case fork:
+		// Do nothing
+	case merge:
+		result.remote = toIndex(bs[2])
+	default:
+		return operation{}, nil
 	}
-	if parts := insertCharAtRE.FindStringSubmatch(text); parts != nil {
-		local, ok1 := parseInt(parts[1])
-		char := parseChar(parts[2])
-		pos, ok2 := parseInt(parts[3])
-		return operation{op: insertChar, local: local, char: char, pos: pos}, ok1 && ok2
-	}
-	if parts := deleteCharAtRE.FindStringSubmatch(text); parts != nil {
-		local, ok1 := parseInt(parts[1])
-		pos, ok2 := parseInt(parts[2])
-		return operation{op: insertChar, local: local, pos: pos}, ok1 && ok2
-	}
-	if parts := forkRE.FindStringSubmatch(text); parts != nil {
-		local, ok1 := parseInt(parts[1])
-		remote, ok2 := parseInt(parts[2])
-		return operation{op: fork, local: local, remote: remote}, ok1 && ok2
-	}
-	if parts := mergeRE.FindStringSubmatch(text); parts != nil {
-		local, ok1 := parseInt(parts[1])
-		remote, ok2 := parseInt(parts[2])
-		return operation{op: merge, local: local, remote: remote}, ok1 && ok2
-	}
-	return operation{}, false
+	return result, bs[n:]
 }
 
 func (op operation) String() string {
@@ -570,12 +557,13 @@ func TestViewAtError(t *testing.T) {
 
 // -----
 
-func validateOperations(text string) error {
+func validateOperations(bs []byte) error {
 	lists := []*crdt.RList{crdt.NewRList()}
-	for _, opStr := range strings.Split(text, ",") {
-		op, ok := parseOperation(opStr)
-		if !ok {
-			return fmt.Errorf("parse error at %v", op)
+	for len(bs) != 0 {
+		var op operation
+		op, bs = parseOperation(bs)
+		if op == (operation{}) {
+			return fmt.Errorf("parse error")
 		}
 		if op.local >= len(lists) {
 			return fmt.Errorf("invalid local index %d (len: %d), op: %v", op.local, len(lists), op)
@@ -621,25 +609,29 @@ func validateOperations(text string) error {
 	return nil
 }
 
-func readFuzzText(filename string) (string, error) {
+func readFuzzData(filename string) ([]byte, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return "", fmt.Errorf("error reading fuzz corpus sample: %w", err)
+		return nil, fmt.Errorf("error reading fuzz corpus sample: %w", err)
 	}
 	lines := strings.Split(string(data), "\n")
 	if len(lines) < 2 {
-		return "", fmt.Errorf("expecting at least 2 lines in fuzz file %s", filename)
+		return nil, fmt.Errorf("expecting at least 2 lines in fuzz file %s", filename)
 	}
 	content := lines[1]
-	if !(strings.HasPrefix(content, `string("`) && strings.HasSuffix(content, `")`)) {
-		return "", fmt.Errorf(`expecting content enclosed by string("<content>"), got %s`, content)
+	if !(strings.HasPrefix(content, `[]byte("`) && strings.HasSuffix(content, `")`)) {
+		return nil, fmt.Errorf(`expecting content enclosed by []byte("<content>"), got %s`, content)
 	}
-	start, end := len("string("), len(content)-len(")")
+	start, end := len("[]byte("), len(content)-len(")")
 	text, err := strconv.Unquote(content[start:end])
 	if err != nil {
-		return "", fmt.Errorf("invalid syntax for fuzz corpus %s: %w", content, err)
+		return nil, fmt.Errorf("invalid syntax for fuzz corpus %s: %w", content, err)
 	}
-	return text, nil
+	bs, err := strconv.Unquote(`"` + text + `"`)
+	if err != nil {
+		return nil, fmt.Errorf("invalid syntax for byte slice %s: %w", text, err)
+	}
+	return []byte(bs), nil
 }
 
 func TestValidateFuzzList(t *testing.T) {
@@ -653,18 +645,18 @@ func TestValidateFuzzList(t *testing.T) {
 		t.Fatalf("error listing fuzz corpus: %v", err)
 	}
 	for _, file := range files {
-		text, err := readFuzzText(filepath.Join("testdata/fuzz/FuzzList", file.Name()))
+		data, err := readFuzzData(filepath.Join("testdata/fuzz/FuzzList", file.Name()))
 		if err != nil {
 			t.Fatalf("reading file %s failed: %v", file.Name(), err)
 		}
-		if err := validateOperations(text); err != nil {
+		if err := validateOperations(data); err != nil {
 			t.Errorf("execution of file %s failed: %v", file.Name(), err)
 		}
 	}
 }
 
 func FuzzList(f *testing.F) {
-	f.Fuzz(func(t *testing.T, data string) {
+	f.Fuzz(func(t *testing.T, data []byte) {
 		validateOperations(data)
 	})
 }
