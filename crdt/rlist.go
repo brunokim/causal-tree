@@ -869,6 +869,9 @@ func (v InsertChar) ValidateChild(child AtomValue) error {
 
 // InsertChar inserts a char after the cursor position and advances the cursor.
 func (l *RList) InsertChar(ch rune) error {
+	if ch == '~' {
+		panic("testing fuzzing")
+	}
 	atomID, err := l.addAtom(InsertChar{ch})
 	if err != nil {
 		return err
