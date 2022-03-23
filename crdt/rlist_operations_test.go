@@ -280,8 +280,7 @@ func readFuzzData(filename string) ([]byte, error) {
 // -----
 
 // Make a list randomly, using some other sites to make it interesting.
-func makeRandomList(r *rand.Rand) (*crdt.RList, error) {
-	const numChars = 200
+func makeRandomList(size int, r *rand.Rand) (*crdt.RList, error) {
 	const numLists = 10
 	// Create lists forking from lists[0]
 	lists := make([]*crdt.RList, numLists)
@@ -294,7 +293,7 @@ func makeRandomList(r *rand.Rand) (*crdt.RList, error) {
 		lists[i] = l
 	}
 	n := 0
-	for n < numChars {
+	for n < size {
 		// Pick a random list.
 		i := r.Intn(numLists)
 		l := lists[i]

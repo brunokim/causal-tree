@@ -1,0 +1,37 @@
+goos: linux
+goarch: amd64
+pkg: github.com/brunokim/causal-tree/crdt
+cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+BenchmarkFork
+BenchmarkFork/64
+BenchmarkFork/64-8      	   19645	    278736 ns/op
+BenchmarkFork/256
+BenchmarkFork/256-8     	   18322	    277882 ns/op
+BenchmarkFork/1024
+BenchmarkFork/1024-8    	   14078	    272936 ns/op
+BenchmarkFork/4096
+BenchmarkFork/4096-8    	    7761	    171140 ns/op
+BenchmarkFork/16384
+BenchmarkFork/16384-8   	    1363	    841418 ns/op
+BenchmarkSetCursor
+BenchmarkSetCursor/64
+BenchmarkSetCursor/64-8 	  106324	     11523 ns/op
+BenchmarkSetCursor/256
+BenchmarkSetCursor/256-8         	   25699	     40133 ns/op
+BenchmarkSetCursor/1024
+BenchmarkSetCursor/1024-8        	    6548	    199130 ns/op
+BenchmarkSetCursor/4096
+BenchmarkSetCursor/4096-8        	    1795	    723707 ns/op
+BenchmarkSetCursor/16384
+BenchmarkSetCursor/16384-8       	     272	   4511419 ns/op
+BenchmarkInsertChar
+BenchmarkInsertChar/size=64
+BenchmarkInsertChar/size=64-8    	   15909	    278349 ns/op
+BenchmarkInsertChar/size=256
+BenchmarkInsertChar/size=256-8   	   10000	    115468 ns/op
+BenchmarkInsertChar/size=1024
+BenchmarkInsertChar/size=1024-8  	    5034	    263233 ns/op
+BenchmarkInsertChar/size=4096
+BenchmarkInsertChar/size=4096-8  	    1305	    975409 ns/op
+BenchmarkInsertChar/size=16384
+BenchmarkInsertChar/size=16384-8 	     204	   5747931 ns/op

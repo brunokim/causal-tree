@@ -2,6 +2,7 @@ package crdt_test
 
 import (
 	"math/rand"
+    "fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -409,7 +410,7 @@ func FuzzList(f *testing.F) {
 }
 
 func FuzzViewAt(f *testing.F) {
-	l, err := makeRandomList(rand.New(rand.NewSource(1740)))
+	l, err := makeRandomList(200, newRand())
 	if err != nil {
 		f.Fatalf("error making list: %v", err)
 	}
@@ -423,4 +424,50 @@ func FuzzViewAt(f *testing.F) {
 		}
 		l.ViewAt(weft)
 	})
+}
+
+// -----
+
+func newRand() *rand.Rand {
+    return rand.New(rand.NewSource(1740))
+}
+
+var sizes = []int{64, 256, 1024, 4096, 16384}
+
+func BenchmarkFork(b *testing.B) {
+    for _, size := range sizes {
+        list, _ := makeRandomList(size, newRand())
+        name := fmt.Sprintf("%d", size)
+        b.Run(name, func(b *testing.B) {
+            for i := 0; i < b.N; i++ {
+                list.Fork()
+            }
+        })
+    }
+}
+
+func BenchmarkSetCursor(b *testing.B) {
+    for _, size := range sizes {
+        list, _ := makeRandomList(size, newRand())
+        name := fmt.Sprintf("%d", size)
+        b.Run(name, func(b *testing.B) {
+            for i := 0; i < b.N; i++ {
+                list.SetCursor(size/2)
+            }
+        })
+    }
+}
+
+func BenchmarkInsertChar(b *testing.B) {
+    for _, size := range sizes {
+        list, _ := makeRandomList(size, newRand())
+        name := fmt.Sprintf("size=%d", size)
+        b.Run(name, func(b *testing.B) {
+            for i := 0; i < b.N; i++ {
+                l, _ := list.Fork()
+                l.SetCursor(size/2)
+                l.InsertChar('x')
+            }
+        })
+    }
 }
