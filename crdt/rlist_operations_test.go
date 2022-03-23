@@ -15,10 +15,9 @@ import (
 // Tests are structured as a sequence of operations on a list of lists.
 //
 // This indirection allows us to perform some actions for every mutation, like
-// dumping their internals to a file. Hopefully, it should also allow us to
-// somehow fuzz list manipulation.
+// dumping their internals to a file, and also allow us to fuzz list manipulation.
 //
-// Operations are:
+// Operations:
 //
 // insertChar <local> <char>         -- insert a char at cursor on list 'local'.
 // deleteChar <local>                -- delete the char at cursor on list 'local'.
@@ -280,46 +279,60 @@ func readFuzzData(filename string) ([]byte, error) {
 
 // -----
 
+// Make a list randomly, using some other sites to make it interesting.
 func makeRandomList(r *rand.Rand) (*crdt.RList, error) {
-	local := crdt.NewRList()
-	const numChars = 100
-	const numRemotes = 10
-	// Insert 100 chars into local.
-	for i := 0; i < numChars; i++ {
-		if err := local.InsertChar('a'); err != nil {
-			return nil, err
-		}
-	}
-	// Make copy of local, that will be the base for all remotes.
-	localCopy, err := local.Fork()
-	if err != nil {
-		return nil, err
-	}
-	insertRandomChar := func(l *crdt.RList, i, j, n int) error {
-		ch := rune(j) + 'b'
-		listLen := n + i
-		pos := r.Intn(listLen+1) - 1 // Allow for -1 pos
-		return l.InsertCharAt(ch, pos)
-	}
-	// Create remote, insert 100 chars at random, then merge at local.
-	for j := 0; j < numRemotes; j++ {
-		remote, err := localCopy.Fork()
+	const numChars = 200
+	const numLists = 10
+	// Create lists forking from lists[0]
+	lists := make([]*crdt.RList, numLists)
+	lists[0] = crdt.NewRList()
+	for i := 1; i < numLists; i++ {
+		l, err := lists[0].Fork()
 		if err != nil {
 			return nil, err
 		}
-		for i := 0; i < numChars; i++ {
-			if err := insertRandomChar(remote, i, j, numChars); err != nil {
+		lists[i] = l
+	}
+	n := 0
+	for n < numChars {
+		// Pick a random list.
+		i := r.Intn(numLists)
+		l := lists[i]
+		if i > 0 {
+			l.Merge(lists[0])
+		}
+		// Insert or deletes 2-5 chars at list.
+		// 40%: inserts char at random.
+		// 40%: inserts char at last position.
+		// 10%: deletes char at random.
+		// 10%: deletes char at last position.
+		numEdits := 2 + r.Intn(4)
+		for j := 0; j < numEdits; j++ {
+			ch := rune(i) + 'a'
+			var err error
+			p := r.Float64()
+			if p < 0.4 {
+				pos := r.Intn(n+1) - 1 // pos in [-1,n)
+				err = l.InsertCharAt(ch, pos)
+				n++
+			} else if p < 0.8 {
+				err = l.InsertChar(ch)
+				n++
+			} else if p < 0.9 && n > 0 {
+				pos := r.Intn(n)
+				err = l.DeleteCharAt(pos)
+				n--
+			} else if l.Cursor != (crdt.AtomID{}) {
+				err = l.DeleteChar()
+				n--
+			}
+			if err != nil {
 				return nil, err
 			}
 		}
-		local.Merge(remote)
-	}
-	// Add some more chars at random, totalling 1200 chars and timestamp ~300.
-	n := (numRemotes + 1) * numChars
-	for i := 0; i < numChars; i++ {
-		if err := insertRandomChar(local, i, numRemotes, n); err != nil {
-			return nil, err
+		if i > 0 {
+			lists[0].Merge(l)
 		}
 	}
-	return local, nil
+	return lists[0], nil
 }
