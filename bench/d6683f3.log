@@ -1,0 +1,201 @@
+?   	github.com/brunokim/causal-tree/cmd/demo	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/brunokim/causal-tree/crdt
+cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+BenchmarkFork
+BenchmarkFork/size=64
+BenchmarkFork/size=64-8 	   20320	    282542 ns/op
+BenchmarkFork/size=64-8 	    2419	    484568 ns/op
+BenchmarkFork/size=64-8 	    2334	    507547 ns/op
+BenchmarkFork/size=64-8 	    2140	    556681 ns/op
+BenchmarkFork/size=64-8 	    2016	    576632 ns/op
+BenchmarkFork/size=256
+BenchmarkFork/size=256-8         	   18538	    278346 ns/op
+BenchmarkFork/size=256-8         	    2362	    473783 ns/op
+BenchmarkFork/size=256-8         	    2352	    499481 ns/op
+BenchmarkFork/size=256-8         	    2233	    538958 ns/op
+BenchmarkFork/size=256-8         	    2113	    591884 ns/op
+BenchmarkFork/size=1024
+BenchmarkFork/size=1024-8        	   14137	    271030 ns/op
+BenchmarkFork/size=1024-8        	    2886	    460424 ns/op
+BenchmarkFork/size=1024-8        	    2545	    449432 ns/op
+BenchmarkFork/size=1024-8        	    2272	    508618 ns/op
+BenchmarkFork/size=1024-8        	    2269	    552770 ns/op
+BenchmarkFork/size=4096
+BenchmarkFork/size=4096-8        	   10000	    181267 ns/op
+BenchmarkFork/size=4096-8        	    4549	    316677 ns/op
+BenchmarkFork/size=4096-8        	    3204	    371701 ns/op
+BenchmarkFork/size=4096-8        	    2838	    467490 ns/op
+BenchmarkFork/size=4096-8        	    2412	    537256 ns/op
+BenchmarkFork/size=16384
+BenchmarkFork/size=16384-8       	    1502	    743451 ns/op
+BenchmarkFork/size=16384-8       	    1711	    845170 ns/op
+BenchmarkFork/size=16384-8       	    1520	    759269 ns/op
+BenchmarkFork/size=16384-8       	    1419	    781878 ns/op
+BenchmarkFork/size=16384-8       	    1417	    898504 ns/op
+BenchmarkSetCursor
+BenchmarkSetCursor/size=64
+BenchmarkSetCursor/size=64-8     	  127192	     12531 ns/op
+BenchmarkSetCursor/size=64-8     	   84066	     13186 ns/op
+BenchmarkSetCursor/size=64-8     	  127057	     11098 ns/op
+BenchmarkSetCursor/size=64-8     	   80617	     14832 ns/op
+BenchmarkSetCursor/size=64-8     	  114868	     14617 ns/op
+BenchmarkSetCursor/size=256
+BenchmarkSetCursor/size=256-8    	   25951	     56360 ns/op
+BenchmarkSetCursor/size=256-8    	   25597	     59672 ns/op
+BenchmarkSetCursor/size=256-8    	   20139	     68938 ns/op
+BenchmarkSetCursor/size=256-8    	   22461	     53518 ns/op
+BenchmarkSetCursor/size=256-8    	   22694	     73503 ns/op
+BenchmarkSetCursor/size=1024
+BenchmarkSetCursor/size=1024-8   	    4426	    345915 ns/op
+BenchmarkSetCursor/size=1024-8   	    3705	    322055 ns/op
+BenchmarkSetCursor/size=1024-8   	    6318	    227080 ns/op
+BenchmarkSetCursor/size=1024-8   	    3240	    332663 ns/op
+BenchmarkSetCursor/size=1024-8   	    3865	    279616 ns/op
+BenchmarkSetCursor/size=4096
+BenchmarkSetCursor/size=4096-8   	    1393	   1075530 ns/op
+BenchmarkSetCursor/size=4096-8   	    1188	   1097066 ns/op
+BenchmarkSetCursor/size=4096-8   	    1461	    684723 ns/op
+BenchmarkSetCursor/size=4096-8   	    1760	    698968 ns/op
+BenchmarkSetCursor/size=4096-8   	    1699	    757481 ns/op
+BenchmarkSetCursor/size=16384
+BenchmarkSetCursor/size=16384-8  	     267	   3786143 ns/op
+BenchmarkSetCursor/size=16384-8  	     319	   3777712 ns/op
+BenchmarkSetCursor/size=16384-8  	     315	   3769995 ns/op
+BenchmarkSetCursor/size=16384-8  	     321	   3736020 ns/op
+BenchmarkSetCursor/size=16384-8  	     318	   3780510 ns/op
+BenchmarkInsertChar
+BenchmarkInsertChar/size=64
+BenchmarkInsertChar/size=64-8    	   16237	    267209 ns/op
+BenchmarkInsertChar/size=64-8    	    2670	    477164 ns/op
+BenchmarkInsertChar/size=64-8    	    2300	    496649 ns/op
+BenchmarkInsertChar/size=64-8    	    2281	    522546 ns/op
+BenchmarkInsertChar/size=64-8    	    2162	    531423 ns/op
+BenchmarkInsertChar/size=256
+BenchmarkInsertChar/size=256-8   	   10000	    114367 ns/op
+BenchmarkInsertChar/size=256-8   	    6151	    229160 ns/op
+BenchmarkInsertChar/size=256-8   	    4299	    323069 ns/op
+BenchmarkInsertChar/size=256-8   	    3104	    388729 ns/op
+BenchmarkInsertChar/size=256-8   	    2762	    482827 ns/op
+BenchmarkInsertChar/size=1024
+BenchmarkInsertChar/size=1024-8  	    5054	    261647 ns/op
+BenchmarkInsertChar/size=1024-8  	    3391	    326371 ns/op
+BenchmarkInsertChar/size=1024-8  	    3128	    378983 ns/op
+BenchmarkInsertChar/size=1024-8  	    2738	    445418 ns/op
+BenchmarkInsertChar/size=1024-8  	    2606	    475173 ns/op
+BenchmarkInsertChar/size=4096
+BenchmarkInsertChar/size=4096-8  	    1212	   1005546 ns/op
+BenchmarkInsertChar/size=4096-8  	    1162	    998483 ns/op
+BenchmarkInsertChar/size=4096-8  	    1162	   1015410 ns/op
+BenchmarkInsertChar/size=4096-8  	    1135	   1036611 ns/op
+BenchmarkInsertChar/size=4096-8  	    1111	   1082502 ns/op
+BenchmarkInsertChar/size=16384
+BenchmarkInsertChar/size=16384-8 	     222	   4853750 ns/op
+BenchmarkInsertChar/size=16384-8 	     236	   5148321 ns/op
+BenchmarkInsertChar/size=16384-8 	     231	   4900772 ns/op
+BenchmarkInsertChar/size=16384-8 	     223	   5140369 ns/op
+BenchmarkInsertChar/size=16384-8 	     244	   4953611 ns/op
+
+?   	github.com/brunokim/causal-tree/cmd/demo	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/brunokim/causal-tree/crdt
+cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+BenchmarkFork
+BenchmarkFork/size=64
+BenchmarkFork/size=64-8 	   20197	    281494 ns/op
+BenchmarkFork/size=64-8 	    2383	    476433 ns/op
+BenchmarkFork/size=64-8 	    2265	    533355 ns/op
+BenchmarkFork/size=64-8 	    2150	    550892 ns/op
+BenchmarkFork/size=64-8 	    2023	    568944 ns/op
+BenchmarkFork/size=256
+BenchmarkFork/size=256-8         	   16240	    248629 ns/op
+BenchmarkFork/size=256-8         	    3054	    393219 ns/op
+BenchmarkFork/size=256-8         	    2644	    439678 ns/op
+BenchmarkFork/size=256-8         	    2458	    478592 ns/op
+BenchmarkFork/size=256-8         	    2325	    508232 ns/op
+BenchmarkFork/size=1024
+BenchmarkFork/size=1024-8        	   12721	    250190 ns/op
+BenchmarkFork/size=1024-8        	    3075	    397931 ns/op
+BenchmarkFork/size=1024-8        	    2532	    409871 ns/op
+BenchmarkFork/size=1024-8        	    2590	    443372 ns/op
+BenchmarkFork/size=1024-8        	    2439	    484011 ns/op
+BenchmarkFork/size=4096
+BenchmarkFork/size=4096-8        	    6975	    173715 ns/op
+BenchmarkFork/size=4096-8        	    5518	    264957 ns/op
+BenchmarkFork/size=4096-8        	    3243	    315292 ns/op
+BenchmarkFork/size=4096-8        	    3316	    355646 ns/op
+BenchmarkFork/size=4096-8        	    2816	    423284 ns/op
+BenchmarkFork/size=16384
+BenchmarkFork/size=16384-8       	    2024	    603629 ns/op
+BenchmarkFork/size=16384-8       	    1813	    748849 ns/op
+BenchmarkFork/size=16384-8       	    1670	    648565 ns/op
+BenchmarkFork/size=16384-8       	    1880	    700321 ns/op
+BenchmarkFork/size=16384-8       	    1464	    689848 ns/op
+BenchmarkSetCursor
+BenchmarkSetCursor/size=64
+BenchmarkSetCursor/size=64-8     	  126729	      9492 ns/op
+BenchmarkSetCursor/size=64-8     	  129392	      9197 ns/op
+BenchmarkSetCursor/size=64-8     	  128238	      8991 ns/op
+BenchmarkSetCursor/size=64-8     	  131511	      8909 ns/op
+BenchmarkSetCursor/size=64-8     	  131444	      8932 ns/op
+BenchmarkSetCursor/size=256
+BenchmarkSetCursor/size=256-8    	   29208	     42726 ns/op
+BenchmarkSetCursor/size=256-8    	   29158	     41723 ns/op
+BenchmarkSetCursor/size=256-8    	   29186	     40716 ns/op
+BenchmarkSetCursor/size=256-8    	   29360	     40292 ns/op
+BenchmarkSetCursor/size=256-8    	   29533	     41219 ns/op
+BenchmarkSetCursor/size=1024
+BenchmarkSetCursor/size=1024-8   	    5959	    187078 ns/op
+BenchmarkSetCursor/size=1024-8   	    6388	    194857 ns/op
+BenchmarkSetCursor/size=1024-8   	    6070	    202379 ns/op
+BenchmarkSetCursor/size=1024-8   	    6198	    191361 ns/op
+BenchmarkSetCursor/size=1024-8   	    5870	    184845 ns/op
+BenchmarkSetCursor/size=4096
+BenchmarkSetCursor/size=4096-8   	    1719	    718384 ns/op
+BenchmarkSetCursor/size=4096-8   	    1790	    685182 ns/op
+BenchmarkSetCursor/size=4096-8   	    1724	    719446 ns/op
+BenchmarkSetCursor/size=4096-8   	    1742	    677786 ns/op
+BenchmarkSetCursor/size=4096-8   	    1744	    667745 ns/op
+BenchmarkSetCursor/size=16384
+BenchmarkSetCursor/size=16384-8  	     350	   3369211 ns/op
+BenchmarkSetCursor/size=16384-8  	     349	   3382580 ns/op
+BenchmarkSetCursor/size=16384-8  	     330	   3736946 ns/op
+BenchmarkSetCursor/size=16384-8  	     309	   3425458 ns/op
+BenchmarkSetCursor/size=16384-8  	     300	   3434849 ns/op
+BenchmarkInsertChar
+BenchmarkInsertChar/size=64
+BenchmarkInsertChar/size=64-8    	    1749	    674590 ns/op
+BenchmarkInsertChar/size=64-8    	    1594	    776634 ns/op
+BenchmarkInsertChar/size=64-8    	    1669	    738082 ns/op
+BenchmarkInsertChar/size=64-8    	    1488	    772294 ns/op
+BenchmarkInsertChar/size=64-8    	    1629	    847258 ns/op
+BenchmarkInsertChar/size=256
+BenchmarkInsertChar/size=256-8   	    1885	    599789 ns/op
+BenchmarkInsertChar/size=256-8   	    1747	    718884 ns/op
+BenchmarkInsertChar/size=256-8   	    1675	    687766 ns/op
+BenchmarkInsertChar/size=256-8   	    1620	    696222 ns/op
+BenchmarkInsertChar/size=256-8   	    1550	    755103 ns/op
+BenchmarkInsertChar/size=1024
+BenchmarkInsertChar/size=1024-8  	    1467	    791446 ns/op
+BenchmarkInsertChar/size=1024-8  	    1477	    872071 ns/op
+BenchmarkInsertChar/size=1024-8  	    1363	    913668 ns/op
+BenchmarkInsertChar/size=1024-8  	    1441	    836612 ns/op
+BenchmarkInsertChar/size=1024-8  	    1360	    903616 ns/op
+BenchmarkInsertChar/size=4096
+BenchmarkInsertChar/size=4096-8  	     984	   1215679 ns/op
+BenchmarkInsertChar/size=4096-8  	     956	   1260088 ns/op
+BenchmarkInsertChar/size=4096-8  	     969	   1258754 ns/op
+BenchmarkInsertChar/size=4096-8  	     927	   1260267 ns/op
+BenchmarkInsertChar/size=4096-8  	     876	   1280742 ns/op
+BenchmarkInsertChar/size=16384
+BenchmarkInsertChar/size=16384-8 	     258	   4809675 ns/op
+BenchmarkInsertChar/size=16384-8 	     244	   4936910 ns/op
+BenchmarkInsertChar/size=16384-8 	     248	   6510772 ns/op
+BenchmarkInsertChar/size=16384-8 	     165	   7359728 ns/op
+BenchmarkInsertChar/size=16384-8 	     169	   6528964 ns/op
+PASS
+ok  	github.com/brunokim/causal-tree/crdt	161.281s
+PASS
+ok  	github.com/brunokim/causal-tree/diff	0.002s
