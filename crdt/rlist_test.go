@@ -1,8 +1,8 @@
 package crdt_test
 
 import (
+	"fmt"
 	"math/rand"
-    "fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -429,45 +429,57 @@ func FuzzViewAt(f *testing.F) {
 // -----
 
 func newRand() *rand.Rand {
-    return rand.New(rand.NewSource(1740))
+	return rand.New(rand.NewSource(1740))
 }
 
-var sizes = []int{64, 256, 1024, 4096, 16384}
+var (
+	sizes      = []int{64, 256, 1024, 4096, 16384}
+	benchLists = map[int]*crdt.RList{}
+)
+
+func getBenchList(size int) *crdt.RList {
+	list, ok := benchLists[size]
+	if !ok {
+		list, _ = makeRandomList(size, newRand())
+		benchLists[size] = list
+	}
+	return list
+}
 
 func BenchmarkFork(b *testing.B) {
-    for _, size := range sizes {
-        list, _ := makeRandomList(size, newRand())
-        name := fmt.Sprintf("size=%d", size)
-        b.Run(name, func(b *testing.B) {
-            for i := 0; i < b.N; i++ {
-                list.Fork()
-            }
-        })
-    }
+	for _, size := range sizes {
+		list := getBenchList(size)
+		name := fmt.Sprintf("size=%d", size)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				list.Fork()
+			}
+		})
+	}
 }
 
 func BenchmarkSetCursor(b *testing.B) {
-    for _, size := range sizes {
-        list, _ := makeRandomList(size, newRand())
-        name := fmt.Sprintf("size=%d", size)
-        b.Run(name, func(b *testing.B) {
-            for i := 0; i < b.N; i++ {
-                list.SetCursor(size/2)
-            }
-        })
-    }
+	for _, size := range sizes {
+		list := getBenchList(size)
+		name := fmt.Sprintf("size=%d", size)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				list.SetCursor(size / 2)
+			}
+		})
+	}
 }
 
 func BenchmarkInsertChar(b *testing.B) {
-    for _, size := range sizes {
-        list, _ := makeRandomList(size, newRand())
-        name := fmt.Sprintf("size=%d", size)
-        b.Run(name, func(b *testing.B) {
-            for i := 0; i < b.N; i++ {
-                l, _ := list.Fork()
-                l.SetCursor(size/2)
-                l.InsertChar('x')
-            }
-        })
-    }
+	for _, size := range sizes {
+		list := getBenchList(size)
+		name := fmt.Sprintf("size=%d", size)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				l, _ := list.Fork()
+				l.SetCursor(size / 2)
+				l.InsertChar('x')
+			}
+		})
+	}
 }
