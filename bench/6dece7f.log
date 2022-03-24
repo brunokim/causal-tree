@@ -1,0 +1,42 @@
+?   	github.com/brunokim/causal-tree/cmd/demo	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/brunokim/causal-tree/crdt
+cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+BenchmarkFork
+BenchmarkFork/size=64
+BenchmarkFork/size=64-8 	   16371	    322189 ns/op
+BenchmarkFork/size=256
+BenchmarkFork/size=256-8         	   14736	    311178 ns/op
+BenchmarkFork/size=1024
+BenchmarkFork/size=1024-8        	   10000	    111079 ns/op
+BenchmarkFork/size=4096
+BenchmarkFork/size=4096-8        	    7094	    224676 ns/op
+BenchmarkFork/size=16384
+BenchmarkFork/size=16384-8       	    1314	    952504 ns/op
+BenchmarkSetCursor
+BenchmarkSetCursor/size=64
+BenchmarkSetCursor/size=64-8     	  114693	     10848 ns/op
+BenchmarkSetCursor/size=256
+BenchmarkSetCursor/size=256-8    	   23194	     52591 ns/op
+BenchmarkSetCursor/size=1024
+BenchmarkSetCursor/size=1024-8   	    5308	    219921 ns/op
+BenchmarkSetCursor/size=4096
+BenchmarkSetCursor/size=4096-8   	    1404	    810716 ns/op
+BenchmarkSetCursor/size=16384
+BenchmarkSetCursor/size=16384-8  	     258	   5011185 ns/op
+BenchmarkInsertChar
+BenchmarkInsertChar/size=64
+BenchmarkInsertChar/size=64-8    	   12632	    334942 ns/op
+BenchmarkInsertChar/size=256
+BenchmarkInsertChar/size=256-8   	   10000	    167817 ns/op
+BenchmarkInsertChar/size=1024
+BenchmarkInsertChar/size=1024-8  	    3902	    316576 ns/op
+BenchmarkInsertChar/size=4096
+BenchmarkInsertChar/size=4096-8  	    1016	   1305457 ns/op
+BenchmarkInsertChar/size=16384
+BenchmarkInsertChar/size=16384-8 	     170	   6908617 ns/op
+PASS
+ok  	github.com/brunokim/causal-tree/crdt	206.339s
+PASS
+ok  	github.com/brunokim/causal-tree/diff	0.002s

@@ -437,7 +437,7 @@ var sizes = []int{64, 256, 1024, 4096, 16384}
 func BenchmarkFork(b *testing.B) {
     for _, size := range sizes {
         list, _ := makeRandomList(size, newRand())
-        name := fmt.Sprintf("%d", size)
+        name := fmt.Sprintf("size=%d", size)
         b.Run(name, func(b *testing.B) {
             for i := 0; i < b.N; i++ {
                 list.Fork()
@@ -449,7 +449,7 @@ func BenchmarkFork(b *testing.B) {
 func BenchmarkSetCursor(b *testing.B) {
     for _, size := range sizes {
         list, _ := makeRandomList(size, newRand())
-        name := fmt.Sprintf("%d", size)
+        name := fmt.Sprintf("size=%d", size)
         b.Run(name, func(b *testing.B) {
             for i := 0; i < b.N; i++ {
                 list.SetCursor(size/2)
