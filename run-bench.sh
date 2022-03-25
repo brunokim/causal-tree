@@ -1,15 +1,14 @@
 #!/bin/bash
 
 OUTPUT="${1}"
-COUNT="${2}"
+FLAGS="${@:2}"
 
 if [ -z "${OUTPUT}" ]; then
     OUTPUT=bench/$(git rev-parse --short HEAD)
 fi
 
-EXTRA_FLAGS=
-if [ ! -z "${COUNT}" ]; then
-    EXTRA_FLAGS="-count=${COUNT}"
+if [[ ! ("${FLAGS}" =~ -bench) ]]; then
+    FLAGS+=("-bench=.")
 fi
 
 if [ ! -z "$(git status --porcelain)" ]; then
@@ -25,7 +24,7 @@ fi
 # Echo command (set -x) for a specific one: https://unix.stackexchange.com/a/177911/420855
 # Get first error code of a pipe: https://unix.stackexchange.com/a/73180/420855
 TMPOUTPUT=$(mktemp)
-( set -x -o pipefail; go1.18 test ./... -v -bench=. -run=TestXXX ${EXTRA_FLAGS} | tee -a "${TMPOUTPUT}" )
+( set -x -o pipefail; go1.18 test ./... -v -run=TestXXX ${FLAGS[@]} | tee -a "${TMPOUTPUT}" )
 if [ $? -ne 0 ]; then
     exit
 else

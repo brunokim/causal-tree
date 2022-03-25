@@ -4,3 +4,4 @@
 *.jsonl
 
 node_modules/
+.ipynb_checkpoints/
