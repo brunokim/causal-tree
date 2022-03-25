@@ -12,6 +12,7 @@ We use Go 1.18 for its fuzzing capabilities.
 - `diff/`: string diff implementation
 - `debug/`: web viewer of CRDT structure
 - `cmd/demo/`: demo server
+- `bench/`: benchmark results and analysis
 
 ## Run demo
 
