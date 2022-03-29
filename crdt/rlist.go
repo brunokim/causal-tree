@@ -496,7 +496,7 @@ func (l *RList) Merge(remote *RList) {
 //
 // The causal block is defined as the contiguous range containing the head and all of its descendents.
 //
-// Time complexity: O(atoms) / O(avg. block size)
+// Time complexity: O(atoms), or, O(avg. block size)
 func walkCausalBlock(block []Atom, f func(Atom) bool) int {
 	if len(block) == 0 {
 		return 0
@@ -534,18 +534,22 @@ func causalBlockSize(block []Atom) int {
 
 // Returns whether the atom is deleted.
 //
-// Time complexity: O(atoms) / O(avg. block size)
+// Time complexity: O(atoms), or, O(avg. block size)
 func (l *RList) isDeleted(atomID AtomID) bool {
 	i := l.atomIndex(atomID)
 	if i < 0 {
 		return false
 	}
 	var isDeleted bool
-	// TODO: currently, the deleted atom has the highest priority. We should
-	// cut the traversal short if it isn't possible that the atom is deleted.
 	walkChildren(l.Weave[i:], func(child Atom) bool {
 		if _, ok := child.Value.(Delete); ok {
 			isDeleted = true
+			return false
+		}
+		// There's a child with lower priority than delete, so there can't be
+		// any more delete atom ahead.
+		if child.Value.AtomPriority() < (Delete{}).AtomPriority() {
+			isDeleted = false
 			return false
 		}
 		return true
@@ -555,7 +559,7 @@ func (l *RList) isDeleted(atomID AtomID) bool {
 
 // Ensure list's cursor isn't deleted, finding the first non-deleted ancestor.
 //
-// Time complexity: O(atoms^2) / O((avg. tree height) * (avg. block size))
+// Time complexity: O(atoms^2), or, O((avg. tree height) * (avg. block size))
 func (l *RList) fixDeletedCursor() {
 	for {
 		if !l.isDeleted(l.Cursor) {
@@ -720,7 +724,7 @@ var (
 // | Operations |
 // +------------+
 
-// Time complexity: O(atoms) / O(atoms + (avg. block size))
+// Time complexity: O(atoms), or, O(atoms + (avg. block size))
 func (l *RList) insertAtomAtCursor(atom Atom) {
 	if l.Cursor.Timestamp == 0 {
 		// Cursor is at initial position.
@@ -902,7 +906,7 @@ func (v Delete) ValidateChild(child AtomValue) error {
 	return fmt.Errorf("invalid atom value after Delete: %T (%v)", child, child)
 }
 
-// DeleteChar deletes the char at the cursor position and .
+// DeleteChar deletes the char at the cursor position, and relocates the cursor to its cause.
 func (l *RList) DeleteChar() error {
 	if l.Cursor.Timestamp == 0 {
 		return ErrNoAtomToDelete
