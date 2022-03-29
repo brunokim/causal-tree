@@ -1,0 +1,16 @@
+name,time/op (ns/op),±
+Fork/size=64-8,6.27105E+05,55%
+Fork/size=256-8,7.16765E+05,32%
+Fork/size=1024-8,4.51854E+05,77%
+Fork/size=4096-8,4.93873E+05,63%
+Fork/size=16384-8,8.79049E+05,16%
+SetCursor/size=64-8,1.06703E+04,11%
+SetCursor/size=256-8,4.95416E+04,16%
+SetCursor/size=1024-8,2.33863E+05,8%
+SetCursor/size=4096-8,8.15895E+05,8%
+SetCursor/size=16384-8,4.60072E+06,6%
+InsertChar/size=64-8,5.40819E+06,19%
+InsertChar/size=256-8,4.86410E+06,13%
+InsertChar/size=1024-8,4.57655E+06,4%
+InsertChar/size=4096-8,5.28815E+06,7%
+InsertChar/size=16384-8,9.93667E+06,7%
