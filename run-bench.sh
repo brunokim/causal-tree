@@ -11,6 +11,10 @@ if [[ ! ("${FLAGS}" =~ -bench) ]]; then
     FLAGS+=("-bench=.")
 fi
 
+if [[ ! ("${FLAGS}" =~ -timeout) ]]; then
+    FLAGS+=("-timeout=0")
+fi
+
 if [ ! -z "$(git status --porcelain)" ]; then
     echo -e "WARNING: git tree is dirty\n"
     if [ -e "${OUTPUT}.log" ]; then

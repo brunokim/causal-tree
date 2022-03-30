@@ -452,7 +452,10 @@ func BenchmarkFork(b *testing.B) {
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				list.Fork()
+				l := list.Clone()
+				if _, err := l.Fork(); err != nil {
+					b.Error(err)
+				}
 			}
 		})
 	}
@@ -476,9 +479,43 @@ func BenchmarkInsertChar(b *testing.B) {
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				l, _ := list.Fork()
+				l := list.Clone()
 				l.SetCursor(size / 2)
-				l.InsertChar('x')
+				if err := l.InsertChar('x'); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkDeleteChar(b *testing.B) {
+	for _, size := range sizes {
+		list := getBenchList(size)
+		name := fmt.Sprintf("size=%d", size)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				l := list.Clone()
+				l.SetCursor(size / 2)
+				if err := l.DeleteChar(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkMerge(b *testing.B) {
+	for _, size := range sizes {
+		r := newRand()
+		r.Seed(5461)
+		remote, _ := makeRandomList(size, r)
+		list := getBenchList(size)
+		name := fmt.Sprintf("size=%d", size)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				l := list.Clone()
+				l.Merge(remote)
 			}
 		})
 	}
