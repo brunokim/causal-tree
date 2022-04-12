@@ -298,3 +298,164 @@ these events.
 - Can we express restrictions on a data structure, like accepted
   types on a list, or that a set has sorted order, or insertion
   order?
+
+## API ideas
+
+    type Container interface
+
+    type Value interface
+
+    type Map struct
+    func NewMap() *Map
+    func (*Map) AddEntry() *Entry
+    func (*Map) ForEach(func(*Entry) bool)
+    func (*Map) Entries() []*Entry
+    func (*Map) Keys() []*Key
+    func (*Map) Vals() []*Val
+
+    type Entry struct
+    func (*Entry) AddKey() *Key
+    func (*Entry) AddVal() *Val
+    func (*Entry) Key() *Key
+    func (*Entry) Val() *Val
+
+    type Key struct
+
+    type Val struct
+
+    type List struct
+    func NewList() *List
+    func (*List) AppendElem() *Elem
+    func (*List) InsertElemAt(i int) *Elem
+    func (*List) ForEach(func(*Elem) bool)
+    func (*List) Elems() []*Elem
+
+    type Elem struct
+    func (*Elem) AddChild(child *Atom)
+    func (*Elem) Child() *Atom
+
+    type Str struct
+    func NewStr() *Str
+    func (*Str) AppendChar(ch rune)
+    func (*Str) AppendChars(chars str)
+    func (*Str) InsertCharAt(ch rune, i int)
+    func (*Str) InsertCharsAt(chars str, i int)
+    func (*Str) Str() str
+
+    type Char struct { x rune }
+
+    type Int32 struct { x int32 }
+    type Int64 struct { x int64 }
+    type Uint32 struct { x uint32 }
+    type Uint64 struct { x uint64 }
+
+    type Float32 struct { x float32 }
+    type Float64 struct { x float64 }
+
+    type Counter struct
+
+    type Symbol struct
+
+    type Record struct
+    func NewRecord(Schema) *Record
+    func (*Record) Set(name str, child *Atom)
+    func (*Record) Get(name str) *Atom
+
+Sample program:
+
+    m := crdt.NewMap()
+
+    e1 := m.AddEntry()
+    e1.AddKey().Str().InsertChars("key1")
+    e1.AddVal().Int(1)
+
+    e2 := m.AddEntry()
+    e2.AddKey().Str().InsertChars("key2")
+    e2.AddVal().Str().InsertChars("str")
+
+    e3 := m.AddEntry()
+    e3.AddKey().Str().InsertChars("key3")
+    l := e3.AddVal().List()
+    l.AppendElem().Char('a')
+    l.AppendElem().Char('b')
+
+    var foo5
+    m.ForEach(func (entry *Entry) bool {
+        k, v := entry.Key(), entry.Val()
+        key := k.(*Str).Str()
+        if key != "key5" {
+            return true
+        }
+        foo5 = v.(*Record).Get("foo")
+        return false
+    })
+
+"Builder" program:
+
+    // Up() returns the first container parent.
+    // Entry, List, Map are containers
+    m := crdt.NewMap()
+        .AddEntry()
+            .AddKey().Str().InsertChars("key1").Up()
+            .AddVal().Int(1).Up()
+            .Up()
+        .AddEntry()
+            .AddKey().Str().InsertChars("key2").Up()
+            .AddVal().Str().InsertChars("str").Up()
+            .Up()
+        .AddEntry()
+            .AddKey().Str().InsertChars("key3").Up()
+            .AddVal().List()
+                .AppendElem().Char('a').Up()
+                .AppendElem().Char('b').Up()
+                .Up()
+            .Up()
+        .Up()
+
+Another "builder" program. Not sure how to implement it, or even if it's possible,
+without breaking with invariants on a causal tree:
+
+    t := crdt.NewTree()
+    m1 := t.Map(
+        t.Entry(
+            t.Key(t.Str("key1")),
+            t.Val(t.Int(1))),
+        t.Entry(
+            t.Key(t.Str("key2")),
+            t.Val(t.Str("str"))),
+        t.Entry(
+            t.Key(t.Str("key3")),
+            t.Val(t.List(
+                t.Elem(t.Char('a')),
+                t.Elem(t.Char('b'))))))
+
+    elem  := t.Elem
+    entry := t.Entry
+    int_  := t.Int
+    key   := t.Key
+    list  := t.List
+    map   := t.Map
+    str   := t.Str
+    val   := t.Val
+
+    m2 := map(
+        entry(
+            key(str("key1")),
+            val(int_(1))),
+        entry(
+            key(str("key2")),
+            val(str("str"))),
+        entry(
+            key(str("key3")),
+            val(list(
+                elem(char('a')),
+                elem(char('b'))))))
+
+Learned that:
+
+- All objects need to point to their corresponding atom, and from there find its children and insert locations.
+- If we try to add only by holding the list's head, we're going to have O(n^2) behavior for multiple insertions.
+  It's necessary to have some kind of cache with atom locations.
+- We can't build objects from the bottom up easily, because the leafs must point to their parents, and they need to
+  have a larger timestamp.
+  The parent must be able to exist in an empty state before any children are appended to it.
