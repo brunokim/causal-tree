@@ -29,7 +29,7 @@ jobs:
           name: Run tests
           command: |
             mkdir -p /tmp/test-reports
-            gotestsum --junitfile /tmp/test-reports/unit-tests.xml -coverprofile=cover.out
+            gotestsum --junitfile /tmp/test-reports/unit-tests.xml -- -coverprofile=cover.out
             go tool cover -html=c.out -o /tmp/test-reports/coverage.html
       - store_test_results:
           path: /tmp/test-reports
