@@ -951,6 +951,24 @@ func (v InsertStr) ValidateChild(child AtomValue) error {
 	}
 }
 
+// InsertStr inserts a Str container after the cursor position and advances the cursor.
+func (l *RList) InsertStr() error {
+	atomID, err := l.addAtom(InsertStr{})
+	if err != nil {
+		return err
+	}
+	l.Cursor = atomID
+	return nil
+}
+
+// InsertStrAt inserts a Str container after the given (list) position.
+func (l *RList) InsertStrAt(i int) error {
+	if err := l.SetCursor(i); err != nil {
+		return err
+	}
+	return l.InsertStr()
+}
+
 // +------------+
 // | Conversion |
 // +------------+
