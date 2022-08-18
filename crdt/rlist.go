@@ -926,6 +926,31 @@ func (l *RList) DeleteCharAt(i int) error {
 	return l.DeleteChar()
 }
 
+// +-----------------------------------+
+// | Operations - Insert str container |
+// +-----------------------------------+
+
+//Inserts a string container as a child of the root atom.
+type InsertStr struct{}
+
+func (v InsertStr) AtomPriority() int { return 30 }
+func (v InsertStr) MarshalJSON() ([]byte, error) {
+	return json.Marshal("insert str container")
+}
+
+func (v InsertStr) String() string { return "STR: " }
+
+func (v InsertStr) ValidateChild(child AtomValue) error {
+	switch child.(type) {
+	case InsertChar:
+		return nil
+	case Delete:
+		return nil
+	default:
+		return fmt.Errorf("invalid atom value after InsertStr: %T (%v)", child, child)
+	}
+}
+
 // +------------+
 // | Conversion |
 // +------------+
