@@ -36,3 +36,9 @@ This webpage can be served independently of a demo server, for example, by runni
 directory.
 
 ![Web interface of CRDT viewer](/docs/crdt-viewer.png)
+
+## Run tests
+
+To run all the test packages of the project, execute the following command from the repo root:
+    $ go test ./...
+
