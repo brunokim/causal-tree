@@ -22,6 +22,7 @@ import (
 // insertChar <local> <char>         -- insert a char at cursor on list 'local'.
 // deleteChar <local>                -- delete the char at cursor on list 'local'.
 // setCursor <local> <pos>           -- set cursor at list-position 'pos' on list 'local'
+// insertStr <local>                 -- insert a str container on list 'local'
 // insertCharAt <local> <char> <pos> -- insert a char at list-position 'pos' on list 'local'
 // deleteCharAt <local> <pos>        -- delete char at list-position 'pos' on list 'local'
 // fork <local> <remote>             -- fork list 'local' into list 'remote'.
@@ -44,6 +45,7 @@ const (
 	fork
 	merge
 	check
+	insertStr
 )
 
 var numBytes = map[operationType]int{
@@ -161,6 +163,8 @@ func testOperations(t *testing.T, ops []operation) []*crdt.RList {
 			must(list.DeleteChar())
 		case setCursor:
 			list.SetCursor(op.pos)
+		case insertStr:
+			list.InsertStr()
 		case insertCharAt:
 			must(list.InsertCharAt(op.char, op.pos))
 		case deleteCharAt:
@@ -175,7 +179,7 @@ func testOperations(t *testing.T, ops []operation) []*crdt.RList {
 		case merge:
 			list.Merge(lists[op.remote])
 		case check:
-			if s := list.AsString(); s != op.str {
+			if s := list.ToJSON(); s != op.str {
 				t.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
 			}
 		}
