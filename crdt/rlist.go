@@ -953,32 +953,43 @@ func (v InsertStr) ValidateChild(child AtomValue) error {
 
 // InsertStr inserts a Str container after the cursor position and advances the cursor.
 func (l *RList) InsertStr() error {
-	atomID, err := l.addAtom(InsertStr{})
-	if err != nil {
-		return err
+	l.Timestamp++
+	if l.Timestamp == 0 {
+		// Overflow
+		return ErrStateLimitExceeded
 	}
+	i := siteIndex(l.Sitemap, l.SiteID)
+	atomID := AtomID{
+		Site:      uint16(i),
+		Index:     uint32(len(l.Yarns[i])),
+		Timestamp: l.Timestamp,
+	}
+	atom := Atom{
+		ID:    atomID,
+		Cause: AtomID{}, //Root is the cause atom.
+		Value: InsertStr{},
+	}
+	l.Yarns[i] = append(l.Yarns[i], atom)
+
+	l.insertAtom(atom, 0)
 	l.Cursor = atomID
 	return nil
-}
-
-// InsertStrAt inserts a Str container after the given (list) position.
-func (l *RList) InsertStrAt(i int) error {
-	if err := l.SetCursor(i); err != nil {
-		return err
-	}
-	return l.InsertStr()
 }
 
 // +------------+
 // | Conversion |
 // +------------+
 
-// AsString interprets list as a sequence of chars.
-func (l *RList) AsString() string {
+// ToJSON interprets list as a sequence of chars.
+func (l *RList) ToJSON() string {
 	atoms := l.filterDeleted()
 	chars := make([]rune, len(atoms))
 	for i, atom := range atoms {
-		chars[i] = atom.Value.(InsertChar).Char
+		if _, ok := atom.Value.(InsertStr); ok {
+			chars[i] = '*'
+		} else if _, ok := atom.Value.(InsertChar); ok {
+			chars[i] = atom.Value.(InsertChar).Char
+		}
 	}
 	return string(chars)
 }
