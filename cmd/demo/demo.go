@@ -175,7 +175,7 @@ func (s *state) handleLoad(w http.ResponseWriter) {
 	for i, list := range lists {
 		resp.Lists[i] = listResponse{
 			ID:      list.id,
-			Content: list.site.AsString(),
+			Content: list.site.ToJSON(),
 		}
 	}
 	bs, err := json.Marshal(resp)
@@ -274,7 +274,7 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 		}
 	}
 	// Write response with current list content.
-	content := list.site.AsString()
+	content := list.site.ToJSON()
 	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, content)
 	log.Printf("%s: value     = %s", id, content)
@@ -343,7 +343,7 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 	// Write response
 	resp := listResponse{
 		ID:      remoteID,
-		Content: remote.AsString(),
+		Content: remote.ToJSON(),
 	}
 	bs, err := json.Marshal(resp)
 	if err != nil {
@@ -430,7 +430,7 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 		})
 	}
 	w.Header().Set("Content-Type", "text/plain")
-	io.WriteString(w, local.site.AsString())
+	io.WriteString(w, local.site.ToJSON())
 }
 
 // -----

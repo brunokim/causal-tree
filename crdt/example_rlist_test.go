@@ -33,10 +33,10 @@ func Example() {
 	}
 
 	// Show contents of l1, l2, and then merge l2 into l1.
-	fmt.Println("l1:", l1.AsString())
-	fmt.Println("l2:", l2.AsString())
+	fmt.Println("l1:", l1.ToJSON())
+	fmt.Println("l2:", l2.ToJSON())
 	l1.Merge(l2)
-	fmt.Println("l1+l2:", l1.AsString())
+	fmt.Println("l1+l2:", l1.ToJSON())
 	// Output:
 	// l1: crdt is cool
 	// l2: crdts are nice
@@ -62,7 +62,7 @@ func ExampleRList_overlap() {
 	l2.InsertCharAt('r', 0)
 
 	l1.Merge(l2)
-	fmt.Println(l1.AsString())
+	fmt.Println(l1.ToJSON())
 	// Output: dreser
 }
 
@@ -91,10 +91,10 @@ func ExampleRList_ViewAt() {
 	v3, _ := s2.ViewAt(crdt.Weft{4, 0, 7})
 	v4, _ := s2.ViewAt(crdt.Weft{0, 3, 7}) // With s0=0, we need to cut s1 down to T3, because it is ultimately caused by 'a' from s0.
 
-	fmt.Println("Now: ", v1.AsString())
-	fmt.Println("s2=0:", v2.AsString())
-	fmt.Println("s1=0:", v3.AsString())
-	fmt.Println("s0=0:", v4.AsString())
+	fmt.Println("Now: ", v1.ToJSON())
+	fmt.Println("s2=0:", v2.ToJSON())
+	fmt.Println("s1=0:", v3.ToJSON())
+	fmt.Println("s0=0:", v4.ToJSON())
 	// Output:
 	// Now:  xyabc
 	// s2=0: abc
