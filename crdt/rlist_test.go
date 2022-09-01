@@ -376,48 +376,56 @@ func TestViewAtError(t *testing.T) {
 
 //Tests for insertStr
 
+/*Edge cases*/
 func TestInsertStrEdgeCases(t *testing.T) {
-	testOperations(t, []operation{
-		// Insert empty str
-		{op: insertStr, local: 0},
-		{op: check, local: 0, str: "*"},
-		// Insert another empty str
-		{op: insertStr, local: 0},
-		{op: check, local: 0, str: "**"},
-	})
 
-	testOperations(t, []operation{
-		// Fork site 0:
-		{op: fork, local: 0, remote: 1},
-		// Insert str 'a' into site 0
-		{op: insertStr, local: 0},
-		{op: insertChar, local: 0, char: 'a'},
-		{op: check, local: 0, str: "*a"},
-		// Insert str 'b' into site 1
-		{op: insertStr, local: 1},
-		{op: insertChar, local: 1, char: 'b'},
-		{op: check, local: 1, str: "*b"},
-		// Merge site #1 -> site #0
-		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "*a*b"},
+	t.Run("EmptyStrings", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert empty str
+			{op: insertStr, local: 0},
+			{op: check, local: 0, str: "*"},
+			// Insert another empty str
+			{op: insertStr, local: 0},
+			{op: check, local: 0, str: "**"},
+		})
 	})
-
-	testOperations(t, []operation{
-		// Delete str container:
-		{op: insertStr, local: 0},
-		{op: deleteCharAt, pos: 0},
-		{op: check, local: 0, str: ""},
+	t.Run("MergeStr", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Fork site 0:
+			{op: fork, local: 0, remote: 1},
+			// Insert str 'a' into site 0
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'a'},
+			{op: check, local: 0, str: "*a"},
+			// Insert str 'b' into site 1
+			{op: insertStr, local: 1},
+			{op: insertChar, local: 1, char: 'b'},
+			{op: check, local: 1, str: "*b"},
+			// Merge site #1 -> site #0
+			{op: merge, local: 0, remote: 1},
+			{op: check, local: 0, str: "*a*b"},
+		})
 	})
-
-	testOperations(t, []operation{
-		// Insert str1 -> 'a' and delete the str container:
-		{op: insertStr, local: 0},
-		{op: insertChar, local: 0, char: 'a'},
-		{op: deleteCharAt, pos: 0},
-		{op: check, local: 0, str: ""},
+	t.Run("DeleteEmptyStr", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Delete str container:
+			{op: insertStr, local: 0},
+			{op: deleteCharAt, pos: 0},
+			{op: check, local: 0, str: ""},
+		})
 	})
-
+	t.Run("DeleteNonEmptyStr", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert str1 -> 'a' and delete the str container:
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'a'},
+			{op: deleteCharAt, pos: 0},
+			{op: check, local: 0, str: ""},
+		})
+	})
 }
+
+/*--------*/
 
 func TestInsertStr(t *testing.T) {
 	testOperations(t, []operation{
