@@ -40,5 +40,6 @@ directory.
 ## Run tests
 
 To run all the test packages of the project, execute the following command from the repo root:
+
     $ go test ./...
 
