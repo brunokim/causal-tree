@@ -7,4 +7,7 @@ require (
 	github.com/google/uuid v1.3.0
 )
 
-require golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
+require (
+	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
+	pgregory.net/rapid v0.4.8 // indirect
+)
