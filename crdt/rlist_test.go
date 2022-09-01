@@ -427,21 +427,63 @@ func TestInsertStrEdgeCases(t *testing.T) {
 
 /*--------*/
 
-func TestInsertStr(t *testing.T) {
-	testOperations(t, []operation{
-		// Create site #0: str1->bcd
-		{op: insertStr, local: 0},
-		{op: insertChar, local: 0, char: 'b'},
-		{op: insertChar, local: 0, char: 'c'},
-		{op: insertChar, local: 0, char: 'd'},
-		{op: check, local: 0, str: "*bcd"},
-		// Insert another str container: str2 -> efg, str1 -> bcd
-		{op: insertStr, local: 0},
-		{op: insertChar, local: 0, char: 'e'},
-		{op: insertChar, local: 0, char: 'f'},
-		{op: insertChar, local: 0, char: 'g'},
-		{op: check, local: 0, str: "*efg*bcd"},
+func TestInsertStrDomainCases(t *testing.T) {
+	t.Run("Insert2Strings", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: str1->bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'b'},
+			{op: insertChar, local: 0, char: 'c'},
+			{op: insertChar, local: 0, char: 'd'},
+			{op: check, local: 0, str: "*bcd"},
+			// Insert another str container: str2 -> efg, str1 -> bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'e'},
+			{op: insertChar, local: 0, char: 'f'},
+			{op: insertChar, local: 0, char: 'g'},
+			{op: check, local: 0, str: "*efg*bcd"},
+		})
 	})
+
+	t.Run("Insert2StringsAndDeleteTheFirst", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: str1->bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'b'},
+			{op: insertChar, local: 0, char: 'c'},
+			{op: insertChar, local: 0, char: 'd'},
+			{op: check, local: 0, str: "*bcd"},
+			// Insert another str container: str2 -> efg, str1 -> bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'e'},
+			{op: insertChar, local: 0, char: 'f'},
+			{op: insertChar, local: 0, char: 'g'},
+			{op: check, local: 0, str: "*efg*bcd"},
+			//Delete the string 'efg'
+			{op: deleteCharAt, pos: 0},
+			{op: check, local: 0, str: "*bcd"},
+		})
+	})
+	t.Run("Insert2StringsAndDeleteTheSecond", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: str1->bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'b'},
+			{op: insertChar, local: 0, char: 'c'},
+			{op: insertChar, local: 0, char: 'd'},
+			{op: check, local: 0, str: "*bcd"},
+			// Insert another str container: str2 -> efg, str1 -> bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'e'},
+			{op: insertChar, local: 0, char: 'f'},
+			{op: insertChar, local: 0, char: 'g'},
+			{op: check, local: 0, str: "*efg*bcd"},
+			//Delete the string 'efg'
+			{op: deleteCharAt, pos: 4},
+			{op: check, local: 0, str: "*efg"},
+		})
+	})
+
 }
 
 func TestMergeMultipleStrContainers(t *testing.T) {

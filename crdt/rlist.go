@@ -791,6 +791,30 @@ func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 // | Operations - Set cursor |
 // +-------------------------+
 
+// Description: Auxiliary function that checks if 'atom' is a container.
+func isContainer(atom Atom) bool {
+
+	switch atom.Value.(type) {
+	case InsertStr:
+		return true
+	default:
+		return false
+	}
+
+}
+
+//Description: this function deletes all the descendants of atom into the weave.
+//O(len(weave)^2)
+func deleteDescendants(weave []Atom, atom Atom) {
+	for i, currentAtom := range weave {
+		if currentAtom.Cause == atom.ID {
+			deleteDescendants(weave, currentAtom)
+			//Delete the child:
+			weave[i] = Atom{}
+		}
+	}
+}
+
 // Time complexity: O(atoms)
 func (l *RList) filterDeleted() []Atom {
 	atoms := make([]Atom, len(l.Weave))
@@ -799,12 +823,18 @@ func (l *RList) filterDeleted() []Atom {
 	var hasDelete bool
 	for i, atom := range l.Weave {
 		indices[atom.ID] = i
+	}
+	for i, atom := range l.Weave {
 		if _, ok := atom.Value.(Delete); ok {
 			hasDelete = true
 			// Deletion must always come after deleted atom, so
 			// indices map must have the cause location.
 			deletedAtomIdx := indices[atom.Cause]
 			atoms[i] = Atom{}
+			if isContainer(atoms[deletedAtomIdx]) {
+				containerAtom := atoms[deletedAtomIdx]
+				deleteDescendants(atoms, containerAtom)
+			}
 			atoms[deletedAtomIdx] = Atom{}
 		}
 	}
