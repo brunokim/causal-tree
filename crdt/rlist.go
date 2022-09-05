@@ -804,14 +804,11 @@ func isContainer(atom Atom) bool {
 }
 
 //Description: this function deletes all the descendants of atom into the weave.
-//O(len(weave)^2)
-func deleteDescendants(weave []Atom, atom Atom) {
-	for i, currentAtom := range weave {
-		if currentAtom.Cause == atom.ID {
-			deleteDescendants(weave, currentAtom)
-			//Delete the child:
-			weave[i] = Atom{}
-		}
+//O(len(block))
+func deleteDescendants(block []Atom, atomIndex int) {
+	causalBlockSz := causalBlockSize(block[atomIndex:])
+	for i := 0; i < causalBlockSz; i++ {
+		block[atomIndex+i] = Atom{}
 	}
 }
 
@@ -830,12 +827,12 @@ func (l *RList) filterDeleted() []Atom {
 			// Deletion must always come after deleted atom, so
 			// indices map must have the cause location.
 			deletedAtomIdx := indices[atom.Cause]
-			atoms[i] = Atom{}
 			if isContainer(atoms[deletedAtomIdx]) {
-				containerAtom := atoms[deletedAtomIdx]
-				deleteDescendants(atoms, containerAtom)
+				deleteDescendants(atoms, deletedAtomIdx)
+			} else {
+				atoms[i] = Atom{}              //Delete the "Delete" atom
+				atoms[deletedAtomIdx] = Atom{} //Detete the target atom
 			}
-			atoms[deletedAtomIdx] = Atom{}
 		}
 	}
 	if !hasDelete {
