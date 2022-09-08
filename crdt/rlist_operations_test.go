@@ -179,7 +179,7 @@ func testOperations(t *testing.T, ops []operation) []*crdt.RList {
 		case merge:
 			list.Merge(lists[op.remote])
 		case check:
-			if s := list.ToJSON(); s != op.str {
+			if s := list.ToString(); s != op.str {
 				t.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
 			}
 		}

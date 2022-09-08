@@ -1007,8 +1007,8 @@ func (l *RList) InsertStr() error {
 // | Conversion |
 // +------------+
 
-// ToJSON interprets list as a sequence of chars.
-func (l *RList) ToJSON() string {
+// ToString interprets list as a sequence of chars.
+func (l *RList) ToString() string {
 	atoms := l.filterDeleted()
 	chars := make([]rune, len(atoms))
 	for i, atom := range atoms {
@@ -1019,6 +1019,41 @@ func (l *RList) ToJSON() string {
 		}
 	}
 	return string(chars)
+}
+
+// this interface represents a generic type.
+type generic interface{}
+
+// ToJSON interprets list as a JSON.
+func (l *RList) ToJSON() ([]byte, error) {
+	tab := "    "
+	atoms := l.filterDeleted()
+	genericList := make([]generic, 0, 0)
+	for i := 0; i < len(atoms); {
+		currentAtomValue := atoms[i].Value
+		switch currentAtomValue.(type) {
+		case InsertChar:
+			genericList = append(genericList, string(currentAtomValue.(InsertChar).Char))
+			i++
+		case InsertStr:
+			strSize := causalBlockSize(atoms[i:])
+			strAtoms := make([]rune, strSize)
+
+			for i, atom := range atoms[i+1 : i+strSize] {
+				strAtoms[i] = atom.Value.(InsertChar).Char
+			}
+			genericList = append(genericList, string(strAtoms))
+			i = i + strSize
+		default:
+			return nil, fmt.Errorf("ToJSON: type not specified")
+		}
+	}
+
+	finalJSON, err := json.MarshalIndent(genericList, "", tab)
+	if err != nil {
+		panic(fmt.Sprintf("ToJSON: %v", err))
+	}
+	return finalJSON, nil
 }
 
 // +-----------+

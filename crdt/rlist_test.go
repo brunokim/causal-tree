@@ -341,7 +341,7 @@ func TestViewAt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v: got err, want nil: %v", test.weft, err)
 		}
-		got := view.ToJSON()
+		got := view.ToString()
 		if got != test.want {
 			t.Errorf("%v: got %q, want %q", test.weft, got, test.want)
 		}
@@ -369,7 +369,7 @@ func TestViewAtError(t *testing.T) {
 	for _, test := range tests {
 		view, err := l0.ViewAt(test.weft)
 		if err == nil {
-			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.ToJSON())
+			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.ToString())
 		}
 	}
 }
