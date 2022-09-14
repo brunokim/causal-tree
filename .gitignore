@@ -5,3 +5,6 @@
 
 node_modules/
 .ipynb_checkpoints/
+
+# Rapid reports
+*.fail
