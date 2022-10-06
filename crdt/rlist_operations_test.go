@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -138,8 +139,10 @@ func decodeOperations(bs []byte) ([]operation, bool) {
 // -----
 
 func setupTestFile(name string) (*os.File, error) {
-	os.MkdirAll("testdata", 0777)
-	return os.Create(fmt.Sprintf("testdata/%s.jsonl", name))
+	filename := fmt.Sprintf("testdata/%s.jsonl", name)
+	baseDir := filepath.Dir(filename)
+	os.MkdirAll(baseDir, 0777)
+	return os.Create(filename)
 }
 
 // Execute sequence of operations dumping intermediate data structures into testdata.
