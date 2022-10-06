@@ -1026,28 +1026,28 @@ type generic interface{}
 func (l *RList) ToJSON() ([]byte, error) {
 	tab := "    "
 	atoms := l.filterDeleted()
-	genericList := make([]generic, 0, 0)
+	var elements []string
 	for i := 0; i < len(atoms); {
 		currentAtomValue := atoms[i].Value
 		switch currentAtomValue.(type) {
 		case InsertChar:
-			genericList = append(genericList, string(currentAtomValue.(InsertChar).Char))
+			elements = append(elements, string(currentAtomValue.(InsertChar).Char))
 			i++
 		case InsertStr:
 			strSize := causalBlockSize(atoms[i:])
 			strAtoms := make([]rune, strSize)
 
-			for i, atom := range atoms[i+1 : i+strSize] {
-				strAtoms[i] = atom.Value.(InsertChar).Char
+			for j, atom := range atoms[i+1 : i+strSize] {
+				strAtoms[j] = atom.Value.(InsertChar).Char
 			}
-			genericList = append(genericList, string(strAtoms))
+			elements = append(elements, string(strAtoms))
 			i = i + strSize
 		default:
 			return nil, fmt.Errorf("ToJSON: type not specified")
 		}
 	}
 
-	finalJSON, err := json.MarshalIndent(genericList, "", tab)
+	finalJSON, err := json.MarshalIndent(elements, "", tab)
 	if err != nil {
 		panic(fmt.Sprintf("ToJSON: %v", err))
 	}
