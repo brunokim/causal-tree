@@ -889,9 +889,7 @@ func (v InsertChar) String() string { return string([]rune{v.Char}) }
 
 func (v InsertChar) ValidateChild(child AtomValue) error {
 	switch child.(type) {
-	case InsertChar:
-		return nil
-	case Delete:
+	case InsertChar, Delete:
 		return nil
 	default:
 		return fmt.Errorf("invalid atom value after InsertChar: %T (%v)", child, child)
