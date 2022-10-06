@@ -977,27 +977,10 @@ func (v InsertStr) ValidateChild(child AtomValue) error {
 
 // InsertStr inserts a Str container after the cursor position and advances the cursor.
 func (l *RList) InsertStr() error {
-	l.Timestamp++
-	if l.Timestamp == 0 {
-		// Overflow
-		return ErrStateLimitExceeded
-	}
-	i := siteIndex(l.Sitemap, l.SiteID)
-	atomID := AtomID{
-		Site:      uint16(i),
-		Index:     uint32(len(l.Yarns[i])),
-		Timestamp: l.Timestamp,
-	}
-	atom := Atom{
-		ID:    atomID,
-		Cause: AtomID{}, //Root is the cause atom.
-		Value: InsertStr{},
-	}
-	l.Yarns[i] = append(l.Yarns[i], atom)
-
-	l.insertAtom(atom, 0)
+	l.Cursor = AtomID{}
+	atomID, err := l.addAtom(InsertStr{})
 	l.Cursor = atomID
-	return nil
+	return err
 }
 
 // +------------+
@@ -1025,7 +1008,7 @@ type generic interface{}
 func (l *RList) ToJSON() ([]byte, error) {
 	tab := "    "
 	atoms := l.filterDeleted()
-	var elements []string
+	var elements []generic
 	for i := 0; i < len(atoms); {
 		currentAtomValue := atoms[i].Value
 		switch currentAtomValue.(type) {
