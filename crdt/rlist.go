@@ -830,7 +830,7 @@ func (l *RList) filterDeleted() []Atom {
 				deleteDescendants(atoms, deletedAtomIdx)
 			} else {
 				atoms[i] = Atom{}              //Delete the "Delete" atom
-				atoms[deletedAtomIdx] = Atom{} //Detete the target atom
+				atoms[deletedAtomIdx] = Atom{} //Delete the target atom
 			}
 		}
 	}
