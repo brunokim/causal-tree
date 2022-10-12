@@ -966,9 +966,7 @@ func (v InsertStr) String() string { return "STR: " }
 
 func (v InsertStr) ValidateChild(child AtomValue) error {
 	switch child.(type) {
-	case InsertChar:
-		return nil
-	case Delete:
+	case InsertChar, Delete:
 		return nil
 	default:
 		return fmt.Errorf("invalid atom value after InsertStr: %T (%v)", child, child)
@@ -992,10 +990,11 @@ func (l *RList) ToString() string {
 	atoms := l.filterDeleted()
 	chars := make([]rune, len(atoms))
 	for i, atom := range atoms {
-		if _, ok := atom.Value.(InsertStr); ok {
+		switch value := atom.Value.(type) {
+		case InsertStr:
 			chars[i] = '*'
-		} else if _, ok := atom.Value.(InsertChar); ok {
-			chars[i] = atom.Value.(InsertChar).Char
+		case InsertChar:
+			chars[i] = value.Char
 		}
 	}
 	return string(chars)
@@ -1011,18 +1010,18 @@ func (l *RList) ToJSON() ([]byte, error) {
 	var elements []generic
 	for i := 0; i < len(atoms); {
 		currentAtomValue := atoms[i].Value
-		switch currentAtomValue.(type) {
+		switch value := currentAtomValue.(type) {
 		case InsertChar:
-			elements = append(elements, string(currentAtomValue.(InsertChar).Char))
+			elements = append(elements, string(value.Char))
 			i++
 		case InsertStr:
 			strSize := causalBlockSize(atoms[i:])
-			strAtoms := make([]rune, strSize)
+			strChars := make([]rune, strSize)
 
 			for j, atom := range atoms[i+1 : i+strSize] {
-				strAtoms[j] = atom.Value.(InsertChar).Char
+				strChars[j] = atom.Value.(InsertChar).Char
 			}
-			elements = append(elements, string(strAtoms))
+			elements = append(elements, string(strChars))
 			i = i + strSize
 		default:
 			return nil, fmt.Errorf("ToJSON: type not specified")
