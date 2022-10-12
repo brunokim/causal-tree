@@ -802,7 +802,7 @@ func isContainer(atom Atom) bool {
 
 }
 
-//Description: this function deletes all the descendants of atom into the weave.
+// Deletes all the descendants of atom into the weave.
 //O(len(block))
 func deleteDescendants(block []Atom, atomIndex int) {
 	causalBlockSz := causalBlockSize(block[atomIndex:])
