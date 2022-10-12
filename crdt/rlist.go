@@ -791,7 +791,7 @@ func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 // | Operations - Set cursor |
 // +-------------------------+
 
-// Description: Auxiliary function that checks if 'atom' is a container.
+// Auxiliary function that checks if 'atom' is a container.
 func isContainer(atom Atom) bool {
 	switch atom.Value.(type) {
 	case InsertStr:
