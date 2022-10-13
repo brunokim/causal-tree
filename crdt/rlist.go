@@ -791,6 +791,26 @@ func (l *RList) addAtom(value AtomValue) (AtomID, error) {
 // | Operations - Set cursor |
 // +-------------------------+
 
+// Auxiliary function that checks if 'atom' is a container.
+func isContainer(atom Atom) bool {
+	switch atom.Value.(type) {
+	case InsertStr:
+		return true
+	default:
+		return false
+	}
+
+}
+
+// Deletes all the descendants of atom into the weave.
+// Time complexity: O(len(block))
+func deleteDescendants(block []Atom, atomIndex int) {
+	causalBlockSz := causalBlockSize(block[atomIndex:])
+	for i := 0; i < causalBlockSz; i++ {
+		block[atomIndex+i] = Atom{}
+	}
+}
+
 // Time complexity: O(atoms)
 func (l *RList) filterDeleted() []Atom {
 	atoms := make([]Atom, len(l.Weave))
@@ -799,13 +819,19 @@ func (l *RList) filterDeleted() []Atom {
 	var hasDelete bool
 	for i, atom := range l.Weave {
 		indices[atom.ID] = i
+	}
+	for i, atom := range l.Weave {
 		if _, ok := atom.Value.(Delete); ok {
 			hasDelete = true
 			// Deletion must always come after deleted atom, so
 			// indices map must have the cause location.
 			deletedAtomIdx := indices[atom.Cause]
-			atoms[i] = Atom{}
-			atoms[deletedAtomIdx] = Atom{}
+			if isContainer(atoms[deletedAtomIdx]) {
+				deleteDescendants(atoms, deletedAtomIdx)
+			} else {
+				atoms[i] = Atom{}              //Delete the "Delete" atom
+				atoms[deletedAtomIdx] = Atom{} //Delete the target atom
+			}
 		}
 	}
 	if !hasDelete {
@@ -862,9 +888,7 @@ func (v InsertChar) String() string { return string([]rune{v.Char}) }
 
 func (v InsertChar) ValidateChild(child AtomValue) error {
 	switch child.(type) {
-	case InsertChar:
-		return nil
-	case Delete:
+	case InsertChar, Delete:
 		return nil
 	default:
 		return fmt.Errorf("invalid atom value after InsertChar: %T (%v)", child, child)
@@ -926,18 +950,89 @@ func (l *RList) DeleteCharAt(i int) error {
 	return l.DeleteChar()
 }
 
+// +-----------------------------------+
+// | Operations - Insert str container |
+// +-----------------------------------+
+
+//Inserts a string container as a child of the root atom.
+type InsertStr struct{}
+
+func (v InsertStr) AtomPriority() int { return 30 }
+func (v InsertStr) MarshalJSON() ([]byte, error) {
+	return json.Marshal("insert str container")
+}
+
+func (v InsertStr) String() string { return "STR: " }
+
+func (v InsertStr) ValidateChild(child AtomValue) error {
+	switch child.(type) {
+	case InsertChar, Delete:
+		return nil
+	default:
+		return fmt.Errorf("invalid atom value after InsertStr: %T (%v)", child, child)
+	}
+}
+
+// InsertStr inserts a Str container after the cursor position and advances the cursor.
+func (l *RList) InsertStr() error {
+	l.Cursor = AtomID{}
+	atomID, err := l.addAtom(InsertStr{})
+	l.Cursor = atomID
+	return err
+}
+
 // +------------+
 // | Conversion |
 // +------------+
 
-// AsString interprets list as a sequence of chars.
-func (l *RList) AsString() string {
+// ToString interprets list as a sequence of chars.
+func (l *RList) ToString() string {
 	atoms := l.filterDeleted()
 	chars := make([]rune, len(atoms))
 	for i, atom := range atoms {
-		chars[i] = atom.Value.(InsertChar).Char
+		switch value := atom.Value.(type) {
+		case InsertStr:
+			chars[i] = '*'
+		case InsertChar:
+			chars[i] = value.Char
+		}
 	}
 	return string(chars)
+}
+
+// this interface represents a generic type.
+type generic interface{}
+
+// ToJSON interprets list as a JSON.
+func (l *RList) ToJSON() ([]byte, error) {
+	tab := "    "
+	atoms := l.filterDeleted()
+	var elements []generic
+	for i := 0; i < len(atoms); {
+		currentAtomValue := atoms[i].Value
+		switch value := currentAtomValue.(type) {
+		case InsertChar:
+			elements = append(elements, string(value.Char))
+			i++
+		case InsertStr:
+			strSize := causalBlockSize(atoms[i:])
+			strChars := make([]rune, strSize)
+
+			for j, atom := range atoms[i+1 : i+strSize] {
+				strChars[j] = atom.Value.(InsertChar).Char
+			}
+			elements = append(elements, string(strChars))
+			i = i + strSize
+		default:
+			return nil, fmt.Errorf("ToJSON: type not specified")
+		}
+	}
+
+	finalJSON, err := json.MarshalIndent(elements, "", tab)
+	if err != nil {
+		panic(fmt.Sprintf("ToJSON: %v", err))
+	}
+	return finalJSON, nil
 }
 
 // +-----------+

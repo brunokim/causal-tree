@@ -341,7 +341,7 @@ func TestViewAt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v: got err, want nil: %v", test.weft, err)
 		}
-		got := view.AsString()
+		got := view.ToString()
 		if got != test.want {
 			t.Errorf("%v: got %q, want %q", test.weft, got, test.want)
 		}
@@ -369,9 +369,143 @@ func TestViewAtError(t *testing.T) {
 	for _, test := range tests {
 		view, err := l0.ViewAt(test.weft)
 		if err == nil {
-			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.AsString())
+			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.ToString())
 		}
 	}
+}
+
+//Tests for insertStr
+
+/*Edge cases*/
+func TestInsertStrEdgeCases(t *testing.T) {
+
+	t.Run("EmptyStrings", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert empty str
+			{op: insertStr, local: 0},
+			{op: check, local: 0, str: "*"},
+			// Insert another empty str
+			{op: insertStr, local: 0},
+			{op: check, local: 0, str: "**"},
+		})
+	})
+	t.Run("MergeStr", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Fork site 0:
+			{op: fork, local: 0, remote: 1},
+			// Insert str 'a' into site 0
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'a'},
+			{op: check, local: 0, str: "*a"},
+			// Insert str 'b' into site 1
+			{op: insertStr, local: 1},
+			{op: insertChar, local: 1, char: 'b'},
+			{op: check, local: 1, str: "*b"},
+			// Merge site #1 -> site #0
+			{op: merge, local: 0, remote: 1},
+			{op: check, local: 0, str: "*a*b"},
+		})
+	})
+	t.Run("DeleteEmptyStr", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Delete str container:
+			{op: insertStr, local: 0},
+			{op: deleteCharAt, pos: 0},
+			{op: check, local: 0, str: ""},
+		})
+	})
+	t.Run("DeleteNonEmptyStr", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert str1 -> 'a' and delete the str container:
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'a'},
+			{op: deleteCharAt, pos: 0},
+			{op: check, local: 0, str: ""},
+		})
+	})
+}
+
+/*--------*/
+
+func TestInsertStrDomainCases(t *testing.T) {
+	t.Run("Insert2Strings", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: str1->bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'b'},
+			{op: insertChar, local: 0, char: 'c'},
+			{op: insertChar, local: 0, char: 'd'},
+			{op: check, local: 0, str: "*bcd"},
+			// Insert another str container: str2 -> efg, str1 -> bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'e'},
+			{op: insertChar, local: 0, char: 'f'},
+			{op: insertChar, local: 0, char: 'g'},
+			{op: check, local: 0, str: "*efg*bcd"},
+		})
+	})
+
+	t.Run("Insert2StringsAndDeleteTheFirst", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: str1->bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'b'},
+			{op: insertChar, local: 0, char: 'c'},
+			{op: insertChar, local: 0, char: 'd'},
+			{op: check, local: 0, str: "*bcd"},
+			// Insert another str container: str2 -> efg, str1 -> bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'e'},
+			{op: insertChar, local: 0, char: 'f'},
+			{op: insertChar, local: 0, char: 'g'},
+			{op: check, local: 0, str: "*efg*bcd"},
+			//Delete the string 'efg'
+			{op: deleteCharAt, pos: 0},
+			{op: check, local: 0, str: "*bcd"},
+		})
+	})
+	t.Run("Insert2StringsAndDeleteTheSecond", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: str1->bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'b'},
+			{op: insertChar, local: 0, char: 'c'},
+			{op: insertChar, local: 0, char: 'd'},
+			{op: check, local: 0, str: "*bcd"},
+			// Insert another str container: str2 -> efg, str1 -> bcd
+			{op: insertStr, local: 0},
+			{op: insertChar, local: 0, char: 'e'},
+			{op: insertChar, local: 0, char: 'f'},
+			{op: insertChar, local: 0, char: 'g'},
+			{op: check, local: 0, str: "*efg*bcd"},
+			//Delete the string 'efg'
+			{op: deleteCharAt, pos: 4},
+			{op: check, local: 0, str: "*efg"},
+		})
+	})
+
+}
+
+func TestMergeMultipleStrContainers(t *testing.T) {
+	testOperations(t, []operation{
+		// Fork site 0:
+		{op: fork, local: 0, remote: 1},
+		// Create site #0: str1->bcd
+		{op: insertStr, local: 0},
+		{op: insertChar, local: 0, char: 'b'},
+		{op: insertChar, local: 0, char: 'c'},
+		{op: insertChar, local: 0, char: 'd'},
+		{op: check, local: 0, str: "*bcd"},
+		// fork and
+		{op: insertStr, local: 1},
+		{op: insertChar, local: 1, char: 'e'},
+		{op: insertChar, local: 1, char: 'f'},
+		{op: insertChar, local: 1, char: 'g'},
+		{op: check, local: 1, str: "*efg"},
+		// Merge site #1 -> site #0
+		{op: merge, local: 0, remote: 1},
+		{op: check, local: 0, str: "*bcd*efg"},
+	})
 }
 
 // -----

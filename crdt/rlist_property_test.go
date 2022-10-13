@@ -53,7 +53,7 @@ func (m *stateMachine) DeleteCharAt(t *rapid.T) {
 }
 
 func (m *stateMachine) Check(t *rapid.T) {
-	got := m.l.AsString()
+	got := m.l.ToString()
 	want := string(m.chars)
 	if got != want {
 		t.Fatalf("content mismatch: want %q but got %q", want, got)
