@@ -68,15 +68,15 @@ func ExampleCausalTree_overlap() {
 
 //
 func ExampleCausalTree_ViewAt() {
-	s0 := crdt.NewCausalTree()    // S0 @ T1
-	s0.InsertChar('a')       // S0 @ T2
-	s1, _ := s0.Fork()       // S0 @ T3
-	s1.InsertChar('b')       // S1 @ T4
-	s1.InsertChar('c')       // S1 @ T5
-	s2, _ := s0.Fork()       // S0 @ T4
-	s2.InsertCharAt('x', -1) // S2 @ T5
-	s2.InsertChar('y')       // S2 @ T6
-	s2.Merge(s1)             // S2 @ T7
+	s0 := crdt.NewCausalTree() // S0 @ T1
+	s0.InsertChar('a')         // S0 @ T2
+	s1, _ := s0.Fork()         // S0 @ T3
+	s1.InsertChar('b')         // S1 @ T4
+	s1.InsertChar('c')         // S1 @ T5
+	s2, _ := s0.Fork()         // S0 @ T4
+	s2.InsertCharAt('x', -1)   // S2 @ T5
+	s2.InsertChar('y')         // S2 @ T6
+	s2.Merge(s1)               // S2 @ T7
 
 	// Now s2 reads as "xyabc", with each char having the following IDs and causes:
 	// x: s2 @ T5, caused by the zero atom
