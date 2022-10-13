@@ -8,15 +8,15 @@ package main
 
 // Example session:
 //  1) User loads demo home webpage (/load)
-//  2) Server answers with all current lists, their IDs, contents and connections.
+//  2) Server answers with all current trees, their IDs, contents and connections.
 //  3) User edits content for a site (/edit #1)
 //  4) User edits content for a site (/edit #2)
 //  5) Server answers edit #1, content is compared at that moment in time.
 //  6) Server answers edit #2, latest content is compared.
 //  7) User forks a site (/fork)
 //  8) Server answers with ID and content of new site, as well as everyone's connection.
-//  9) User merges two lists (/sync)
-// 10) Server responds with new content for merged list.
+//  9) User merges two trees (/sync)
+// 10) Server responds with new content for merged tree.
 //
 // Note that connection state is not kept in the server, only on the client.
 
@@ -61,16 +61,16 @@ type debugMessage struct {
 
 // -----
 
-type listinfo struct {
+type treeinfo struct {
 	id    string
-	site  *crdt.RList
+	site  *crdt.CausalTree
 	mu    *sync.Mutex
 	order int
 }
 
-func sortListinfos(lists []listinfo) {
-	sort.Slice(lists, func(i, j int) bool {
-		return lists[i].order < lists[j].order
+func sortTreeinfos(trees []treeinfo) {
+	sort.Slice(trees, func(i, j int) bool {
+		return trees[i].order < trees[j].order
 	})
 }
 
@@ -79,7 +79,7 @@ type state struct {
 
 	debugMsgs chan<- debugMessage
 
-	listmap sync.Map // map[string]listinfo
+	treemap sync.Map // map[string]treeinfo
 	maplen  int
 
 	numLoadRequests int
@@ -89,32 +89,32 @@ type state struct {
 }
 
 func newState(debugMsgs chan<- debugMessage) *state {
-	site := crdt.NewRList()
+	site := crdt.NewCausalTree()
 	siteID := site.SiteID.String()
-	list := listinfo{
+	tree := treeinfo{
 		id:    siteID,
 		site:  site,
 		mu:    &sync.Mutex{},
 		order: 0,
 	}
-	var listmap sync.Map
-	listmap.Store(siteID, list)
+	var treemap sync.Map
+	treemap.Store(siteID, tree)
 	return &state{
 		debugMsgs: debugMsgs,
-		listmap:   listmap,
+		treemap:   treemap,
 		maplen:    1,
 	}
 }
 
-func (s *state) listinfos() []listinfo {
-	var lists []listinfo
-	s.listmap.Range(func(key, val interface{}) bool {
-		list := val.(listinfo)
-		lists = append(lists, list)
+func (s *state) treeinfos() []treeinfo {
+	var trees []treeinfo
+	s.treemap.Range(func(key, val interface{}) bool {
+		tree := val.(treeinfo)
+		trees = append(trees, tree)
 		return true
 	})
-	sortListinfos(lists)
-	return lists
+	sortTreeinfos(trees)
+	return trees
 }
 
 // -----
@@ -139,13 +139,13 @@ func main() {
 
 // -----
 
-type listResponse struct {
+type treeResponse struct {
 	ID      string `json:"id"`
 	Content string `json:"content"`
 }
 
 type loadResponse struct {
-	Lists []listResponse `json:"lists"`
+	Trees []treeResponse `json:"trees"`
 }
 
 type loadHTTPHandler struct {
@@ -168,14 +168,14 @@ func (s *state) handleLoad(w http.ResponseWriter) {
 	numRequests := s.numLoadRequests
 	s.numLoadRequests++
 	s.Unlock()
-	// Build response containing all lists.
+	// Build response containing all trees.
 	var resp loadResponse
-	lists := s.listinfos()
-	resp.Lists = make([]listResponse, len(lists))
-	for i, list := range lists {
-		resp.Lists[i] = listResponse{
-			ID:      list.id,
-			Content: list.site.ToString(),
+	trees := s.treeinfos()
+	resp.Trees = make([]treeResponse, len(trees))
+	for i, tree := range trees {
+		resp.Trees[i] = treeResponse{
+			ID:      tree.id,
+			Content: tree.site.ToString(),
 		}
 	}
 	bs, err := json.Marshal(resp)
@@ -193,7 +193,7 @@ func (s *state) handleLoad(w http.ResponseWriter) {
 		"Type":    "loadStep",
 		"ReqIdx":  numRequests,
 		"StepIdx": 0,
-		"Sites":   s.debugLists(),
+		"Sites":   s.debugTrees(),
 	})
 }
 
@@ -230,24 +230,24 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 		"Request": req,
 	})
 	defer s.syncDebug()
-	// Retrieve list from ID and acquire its lock.
+	// Retrieve tree from ID and acquire its lock.
 	id := req.ID
-	val, ok := s.listmap.Load(id)
+	val, ok := s.treemap.Load(id)
 	if !ok {
-		log.Printf("Unknown list ID: %s", id)
+		log.Printf("Unknown tree ID: %s", id)
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "edit error: %q not found", id)
 		return
 	}
-	list := val.(listinfo)
-	list.mu.Lock()
-	defer list.mu.Unlock()
+	tree := val.(treeinfo)
+	tree.mu.Lock()
+	defer tree.mu.Unlock()
 	// Get ID of this edit call.
 	s.Lock()
 	numRequests := s.numEditRequests
 	s.numEditRequests++
 	s.Unlock()
-	// Execute operations in list.
+	// Execute operations in tree.
 	var i int
 	for j, op := range req.Ops {
 		switch op.Op {
@@ -255,26 +255,26 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 			i++
 		case "insert":
 			ch, _ := utf8.DecodeRuneInString(op.Char)
-			list.site.InsertCharAt(ch, i-1)
+			tree.site.InsertCharAt(ch, i-1)
 			log.Printf("%s: operation = insertCharAt %c %d", id, ch, i-1)
 			i++
 		case "delete":
-			list.site.DeleteCharAt(i)
+			tree.site.DeleteCharAt(i)
 			log.Printf("%s: operation = deleteCharAt %d", id, i)
 		}
-		// Dump lists into debug file.
+		// Dump trees into debug file.
 		if op.Op != "keep" {
 			s.writeDebug(map[string]interface{}{
 				"Type":     "editStep",
 				"ReqIdx":   numRequests,
 				"StepIdx":  j,
-				"Sites":    s.debugLists(),
-				"LocalIdx": list.order,
+				"Sites":    s.debugTrees(),
+				"LocalIdx": tree.order,
 			})
 		}
 	}
-	// Write response with current list content.
-	content := list.site.ToString()
+	// Write response with current tree content.
+	content := tree.site.ToString()
 	w.Header().Set("Content-Type", "text/plain")
 	io.WriteString(w, content)
 	log.Printf("%s: value     = %s", id, content)
@@ -306,18 +306,18 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 		"Request": req,
 	})
 	defer s.syncDebug()
-	// Retrieve list from ID and acquire its lock.
+	// Retrieve tree from ID and acquire its lock.
 	id := req.LocalID
-	val, ok := s.listmap.Load(id)
+	val, ok := s.treemap.Load(id)
 	if !ok {
-		log.Printf("Unknown list ID: %s", id)
+		log.Printf("Unknown tree ID: %s", id)
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "fork error: %q not found", id)
 		return
 	}
-	list := val.(listinfo)
-	list.mu.Lock()
-	defer list.mu.Unlock()
+	tree := val.(treeinfo)
+	tree.mu.Lock()
+	defer tree.mu.Unlock()
 	// Get sequence number of this fork call.
 	s.Lock()
 	order := s.maplen
@@ -325,23 +325,23 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 	s.numForkRequests++
 	s.maplen++
 	s.Unlock()
-	// Fork list and include it in the listmap.
-	remote, err := list.site.Fork()
+	// Fork tree and include it in the treemap.
+	remote, err := tree.site.Fork()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "fork error: %v", err)
 		return
 	}
 	remoteID := remote.SiteID.String()
-	s.listmap.Store(remoteID, listinfo{
+	s.treemap.Store(remoteID, treeinfo{
 		id:    remoteID,
 		site:  remote,
 		mu:    &sync.Mutex{},
 		order: order,
 	})
-	log.Printf("%s: fork      = %s", list.site.SiteID, remote.SiteID)
+	log.Printf("%s: fork      = %s", tree.site.SiteID, remote.SiteID)
 	// Write response
-	resp := listResponse{
+	resp := treeResponse{
 		ID:      remoteID,
 		Content: remote.ToString(),
 	}
@@ -359,8 +359,8 @@ func (s *state) handleFork(w http.ResponseWriter, req *forkRequest) {
 		"Type":      "forkStep",
 		"ReqIdx":    numRequests,
 		"StepIdx":   0,
-		"Sites":     s.debugLists(),
-		"LocalIdx":  list.order,
+		"Sites":     s.debugTrees(),
+		"LocalIdx":  tree.order,
 		"RemoteIdx": order,
 	})
 }
@@ -398,21 +398,21 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 	s.numSyncRequests++
 	s.Unlock()
 	//
-	val, ok := s.listmap.Load(req.LocalID)
+	val, ok := s.treemap.Load(req.LocalID)
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "unknown ID %q", req.LocalID)
 		return
 	}
-	local := val.(listinfo)
+	local := val.(treeinfo)
 	for i, remoteID := range req.RemoteIDs {
-		val, ok := s.listmap.Load(remoteID)
+		val, ok := s.treemap.Load(remoteID)
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprintf(w, "unknown remote frontend ID: %q", remoteID)
 			return
 		}
-		remote := val.(listinfo)
+		remote := val.(treeinfo)
 
 		lockAll(local, remote)
 		local.site.Merge(remote.site)
@@ -424,7 +424,7 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 			"Type":      "syncStep",
 			"ReqIdx":    numRequests,
 			"StepIdx":   i,
-			"Sites":     s.debugLists(),
+			"Sites":     s.debugTrees(),
 			"LocalIdx":  local.order,
 			"RemoteIdx": remote.order,
 		})
@@ -436,33 +436,33 @@ func (s *state) handleSync(w http.ResponseWriter, req *syncRequest) {
 // -----
 
 // Lock mutexes in ascending order.
-func lockAll(lists ...listinfo) {
-	sortListinfos(lists)
-	for _, list := range lists {
-		list.mu.Lock()
+func lockAll(trees ...treeinfo) {
+	sortTreeinfos(trees)
+	for _, tree := range trees {
+		tree.mu.Lock()
 	}
 }
 
 // Unlock mutexes in descending order.
-func unlockAll(lists ...listinfo) {
-	sortListinfos(lists)
-	for i := len(lists) - 1; i >= 0; i-- {
-		lists[i].mu.Unlock()
+func unlockAll(trees ...treeinfo) {
+	sortTreeinfos(trees)
+	for i := len(trees) - 1; i >= 0; i-- {
+		trees[i].mu.Unlock()
 	}
 }
 
 // -----
 
-func (s *state) debugLists() []*crdt.RList {
+func (s *state) debugTrees() []*crdt.CausalTree {
 	if !s.isDebug() {
 		return nil
 	}
-	listinfos := s.listinfos()
-	lists := make([]*crdt.RList, len(listinfos))
-	for i, info := range listinfos {
-		lists[i] = info.site
+	treeinfos := s.treeinfos()
+	trees := make([]*crdt.CausalTree, len(treeinfos))
+	for i, info := range treeinfos {
+		trees[i] = info.site
 	}
-	return lists
+	return trees
 }
 
 func (s *state) isDebug() bool {

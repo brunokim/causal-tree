@@ -1,4 +1,4 @@
-// Connect each list partial state to its request.
+// Connect each tree partial state to its request.
 function prepareStates(log) {
   let states = [];
   let requests = {
@@ -87,15 +87,15 @@ export class Crdt {
       case "test":
         return state["Action"];
       case "loadStep":
-        return `Load lists #${state["ReqIdx"]}`;
+        return `Load trees #${state["ReqIdx"]}`;
       case "editStep":
         let stepIndex = state["StepIdx"];
         let op = state["Request"].ops[stepIndex];
-        return `Edit request #${state["ReqIdx"]} @ ${stepIndex} - ${op.op} ${op.ch} at list #${state["LocalIdx"]}`;
+        return `Edit request #${state["ReqIdx"]} @ ${stepIndex} - ${op.op} ${op.ch} at tree #${state["LocalIdx"]}`;
       case "forkStep":
-        return `Fork list #${state["LocalIdx"]} into list #${state["RemoteIdx"]}`;
+        return `Fork tree #${state["LocalIdx"]} into tree #${state["RemoteIdx"]}`;
       case "syncStep":
-        return `Merge list #${state["LocalIdx"]} from list #${state["RemoteIdx"]}`;
+        return `Merge tree #${state["LocalIdx"]} from tree #${state["RemoteIdx"]}`;
     }
     return "";
   }
@@ -114,7 +114,7 @@ export class Crdt {
     let index = site["Sitemap"].indexOf(site["SiteID"]);
     return $("<div>")
       .addClass("site")
-      .append($("<h3>").append(`List #${i}`))
+      .append($("<h3>").append(`Tree #${i}`))
       .append($("<h4>").append("Sitemap"))
       .append(
         $("<ol>")

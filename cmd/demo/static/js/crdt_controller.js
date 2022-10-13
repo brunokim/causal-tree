@@ -108,8 +108,8 @@ export class CrdtController {
       .catch((err) => console.log(err));
   }
 
-  handleForkResponse(list) {
-    let sibling = this.parent_controller.newCrdt(list.id, list.content);
+  handleForkResponse(tree) {
+    let sibling = this.parent_controller.newCrdt(tree.id, tree.content);
 
     this.parent_controller.connect(this.id, sibling.id);
     this.renderSyncArea();

@@ -6,69 +6,69 @@ import (
 	"github.com/brunokim/causal-tree/crdt"
 )
 
-// Showcasing the main operations in a replicated list (RList) data type.
+// Showcasing the main operations in a replicated list (CausalTree) data type.
 func Example() {
-	// Create new CRDT in l1, insert 'crdt is nice', and copy it to l2.
-	l1 := crdt.NewRList()
+	// Create new CRDT in t1, insert 'crdt is nice', and copy it to t2.
+	t1 := crdt.NewCausalTree()
 	for _, ch := range "crdt is nice" {
-		l1.InsertChar(ch)
+		t1.InsertChar(ch)
 	}
-	l2, _ := l1.Fork()
+	t2, _ := t1.Fork()
 
-	// Rewrite 'crdt is' with 'crdts are' in l2.
-	l2.SetCursor(6) //             .-- place cursor here
-	l2.DeleteChar() // c r d t _ i s
-	l2.DeleteChar() //         ^ ^ ^
-	l2.DeleteChar() //         and delete 3 chars
+	// Rewrite 'crdt is' with 'crdts are' in t2.
+	t2.SetCursor(6) //             .-- place cursor here
+	t2.DeleteChar() // c r d t _ i s
+	t2.DeleteChar() //         ^ ^ ^
+	t2.DeleteChar() //         and delete 3 chars
 	for _, ch := range "s are" {
-		l2.InsertChar(ch)
+		t2.InsertChar(ch)
 	}
 
-	// Rewrite 'nice' with 'cool' in l1.
+	// Rewrite 'nice' with 'cool' in t1.
 	for i := 0; i < 4; i++ {
-		l1.DeleteChar()
+		t1.DeleteChar()
 	}
 	for _, ch := range "cool" {
-		l1.InsertChar(ch)
+		t1.InsertChar(ch)
 	}
 
-	// Show contents of l1, l2, and then merge l2 into l1.
-	fmt.Println("l1:", l1.ToString())
-	fmt.Println("l2:", l2.ToString())
-	l1.Merge(l2)
-	fmt.Println("l1+l2:", l1.ToString())
+	// Show contents of t1, t2, and then merge t2 into t1.
+	fmt.Println("t1:", t1.ToString())
+	fmt.Println("t2:", t2.ToString())
+	t1.Merge(t2)
+	fmt.Println("t1+t2:", t1.ToString())
 	// Output:
-	// l1: crdt is cool
-	// l2: crdts are nice
-	// l1+l2: crdts are cool
+	// t1: crdt is cool
+	// t2: crdts are nice
+	// t1+t2: crdts are cool
 }
 
 // Merging a set of overlapping changes may not produce intelligible results, but it's close
 // enough to the intention of each party, and does not interrupt either to solve a merge conflict.
-func ExampleRList_overlap() {
-	l1 := crdt.NewRList()
+func ExampleCausalTree_overlap() {
+	t1 := crdt.NewCausalTree()
 	for _, ch := range "desserts" {
-		l1.InsertChar(ch)
+		t1.InsertChar(ch)
 	}
-	l2, _ := l1.Fork()
+	t2, _ := t1.Fork()
 
-	// l1: desserts -> desert
-	l1.DeleteCharAt(7)
-	l1.DeleteCharAt(3)
+	// t1: desserts -> desert
+	t1.DeleteCharAt(7)
+	t1.DeleteCharAt(3)
 
-	// l2: desserts -> dresser
-	l2.DeleteCharAt(7)
-	l2.DeleteCharAt(6)
-	l2.InsertCharAt('r', 0)
+	// t2: desserts -> dresser
+	t2.DeleteCharAt(7)
+	t2.DeleteCharAt(6)
+	t2.InsertCharAt('r', 0)
 
-	l1.Merge(l2)
-	fmt.Println(l1.ToString())
+	t1.Merge(t2)
+	fmt.Println(t1.ToString())
 	// Output: dreser
 }
 
 //
-func ExampleRList_ViewAt() {
-	s0 := crdt.NewRList()    // S0 @ T1
+func ExampleCausalTree_ViewAt() {
+	s0 := crdt.NewCausalTree()    // S0 @ T1
 	s0.InsertChar('a')       // S0 @ T2
 	s1, _ := s0.Fork()       // S0 @ T3
 	s1.InsertChar('b')       // S1 @ T4

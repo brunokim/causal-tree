@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestRList(t *testing.T) {
+func TestCausalTree(t *testing.T) {
 	teardown := crdt.MockUUIDs(
 		uuid.MustParse("00000001-8891-11ec-a04c-67855c00505b"),
 		uuid.MustParse("00000002-8891-11ec-a04c-67855c00505b"),
@@ -271,7 +271,7 @@ func TestInsertsAtSamePosition(t *testing.T) {
 
 // -----
 
-func setupTestView(t *testing.T) []*crdt.RList {
+func setupTestView(t *testing.T) []*crdt.CausalTree {
 	return testOperations(t, []operation{
 		// Create site #0: abcd
 		{op: insertChar, local: 0, char: 'a'},
@@ -304,8 +304,8 @@ func TestViewAt(t *testing.T) {
 	)
 	defer teardown()
 
-	lists := setupTestView(t)
-	l0 := lists[0]
+	trees := setupTestView(t)
+	t0 := trees[0]
 
 	tests := []struct {
 		weft crdt.Weft
@@ -337,7 +337,7 @@ func TestViewAt(t *testing.T) {
 		{crdt.Weft{9, 0}, "abcdefg"},
 	}
 	for _, test := range tests {
-		view, err := l0.ViewAt(test.weft)
+		view, err := t0.ViewAt(test.weft)
 		if err != nil {
 			t.Fatalf("%v: got err, want nil: %v", test.weft, err)
 		}
@@ -355,8 +355,8 @@ func TestViewAtError(t *testing.T) {
 	)
 	defer teardown()
 
-	lists := setupTestView(t)
-	l0 := lists[0]
+	trees := setupTestView(t)
+	t0 := trees[0]
 
 	tests := []struct {
 		weft crdt.Weft
@@ -367,7 +367,7 @@ func TestViewAtError(t *testing.T) {
 		{crdt.Weft{3, 8}}, {crdt.Weft{2, 8}}, {crdt.Weft{1, 8}},
 	}
 	for _, test := range tests {
-		view, err := l0.ViewAt(test.weft)
+		view, err := t0.ViewAt(test.weft)
 		if err == nil {
 			t.Fatalf("%v: got nil, want err (str: %q)", test.weft, view.ToString())
 		}
@@ -544,19 +544,19 @@ func FuzzList(f *testing.F) {
 }
 
 func FuzzViewAt(f *testing.F) {
-	l, err := makeRandomList(200, newRand())
+	tree, err := makeRandomTree(200, newRand())
 	if err != nil {
-		f.Fatalf("error making list: %v", err)
+		f.Fatalf("error making tree: %v", err)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		weft := l.Now()
+		weft := tree.Now()
 		for i, x := range data {
 			if i >= len(weft) {
 				break
 			}
 			weft[i] = uint32(x)
 		}
-		l.ViewAt(weft)
+		tree.ViewAt(weft)
 	})
 }
 
@@ -568,26 +568,26 @@ func newRand() *rand.Rand {
 
 var (
 	sizes      = []int{64, 256, 1024, 4096, 16384}
-	benchLists = map[int]*crdt.RList{}
+	benchTrees = map[int]*crdt.CausalTree{}
 )
 
-func getBenchList(size int) *crdt.RList {
-	list, ok := benchLists[size]
+func getBenchTree(size int) *crdt.CausalTree {
+	tree, ok := benchTrees[size]
 	if !ok {
-		list, _ = makeRandomList(size, newRand())
-		benchLists[size] = list
+		tree, _ = makeRandomTree(size, newRand())
+		benchTrees[size] = tree
 	}
-	return list
+	return tree
 }
 
 func BenchmarkFork(b *testing.B) {
 	for _, size := range sizes {
-		list := getBenchList(size)
+		tree := getBenchTree(size)
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				l := list.Clone()
-				if _, err := l.Fork(); err != nil {
+				t1 := tree.Clone()
+				if _, err := t1.Fork(); err != nil {
 					b.Error(err)
 				}
 			}
@@ -597,11 +597,11 @@ func BenchmarkFork(b *testing.B) {
 
 func BenchmarkSetCursor(b *testing.B) {
 	for _, size := range sizes {
-		list := getBenchList(size)
+		tree := getBenchTree(size)
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				list.SetCursor(size / 2)
+				tree.SetCursor(size / 2)
 			}
 		})
 	}
@@ -609,13 +609,13 @@ func BenchmarkSetCursor(b *testing.B) {
 
 func BenchmarkInsertChar(b *testing.B) {
 	for _, size := range sizes {
-		list := getBenchList(size)
+		tree := getBenchTree(size)
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				l := list.Clone()
-				l.SetCursor(size / 2)
-				if err := l.InsertChar('x'); err != nil {
+				t1 := tree.Clone()
+				t1.SetCursor(size / 2)
+				if err := t1.InsertChar('x'); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -625,13 +625,13 @@ func BenchmarkInsertChar(b *testing.B) {
 
 func BenchmarkDeleteChar(b *testing.B) {
 	for _, size := range sizes {
-		list := getBenchList(size)
+		tree := getBenchTree(size)
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				l := list.Clone()
-				l.SetCursor(size / 2)
-				if err := l.DeleteChar(); err != nil {
+				t1 := tree.Clone()
+				t1.SetCursor(size / 2)
+				if err := t1.DeleteChar(); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -643,13 +643,13 @@ func BenchmarkMerge(b *testing.B) {
 	for _, size := range sizes {
 		r := newRand()
 		r.Seed(5461)
-		remote, _ := makeRandomList(size, r)
-		list := getBenchList(size)
+		remote, _ := makeRandomTree(size, r)
+		tree := getBenchTree(size)
 		name := fmt.Sprintf("size=%d", size)
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				l := list.Clone()
-				l.Merge(remote)
+				t1 := tree.Clone()
+				t1.Merge(remote)
 			}
 		})
 	}

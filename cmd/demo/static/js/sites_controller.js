@@ -9,8 +9,8 @@ export class SitesController {
   }
 
   handleLoadResponse(resp) {
-    for (let list of resp.lists) {
-      this.newCrdt(list.id, list.content);
+    for (let tree of resp.trees) {
+      this.newCrdt(tree.id, tree.content);
     }
   }
 

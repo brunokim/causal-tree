@@ -7,7 +7,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-// Model an RList as a slice of chars, subject to insertions and deletions
+// Model an CausalTree as a slice of chars, subject to insertions and deletions
 // at random positions with InsertCharAt and DeleteCharAt.
 //
 // We don't model the more primitive operations InsertChar, DeleteChar and SetCursor
@@ -17,19 +17,19 @@ import (
 //
 // TODO: perhaps this is a sign that the cursor should be more predictable...?
 type stateMachine struct {
-	l     *crdt.RList
+	t     *crdt.CausalTree
 	chars []rune
 }
 
 func (m *stateMachine) Init(t *rapid.T) {
-	m.l = crdt.NewRList()
+	m.t = crdt.NewCausalTree()
 }
 
 func (m *stateMachine) InsertCharAt(t *rapid.T) {
 	ch := rapid.Rune().Draw(t, "ch").(rune)
 	i := rapid.IntRange(-1, len(m.chars)-1).Draw(t, "i").(int)
 
-	err := m.l.InsertCharAt(ch, i)
+	err := m.t.InsertCharAt(ch, i)
 	if err != nil {
 		t.Fatal("(*stateMachine).InsertCharAt:", err)
 	}
@@ -43,7 +43,7 @@ func (m *stateMachine) DeleteCharAt(t *rapid.T) {
 	}
 	i := rapid.IntRange(0, len(m.chars)-1).Draw(t, "i").(int)
 
-	err := m.l.DeleteCharAt(i)
+	err := m.t.DeleteCharAt(i)
 	if err != nil {
 		t.Fatal("(*stateMachine).DeleteCharAt:", err)
 	}
@@ -53,7 +53,7 @@ func (m *stateMachine) DeleteCharAt(t *rapid.T) {
 }
 
 func (m *stateMachine) Check(t *rapid.T) {
-	got := m.l.ToString()
+	got := m.t.ToString()
 	want := string(m.chars)
 	if got != want {
 		t.Fatalf("content mismatch: want %q but got %q", want, got)
