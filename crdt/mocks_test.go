@@ -17,22 +17,22 @@ func MockUUIDs(uuids ...uuid.UUID) func() {
 	return undo
 }
 
-// Clone copies all information of a list without creating a new site.
-func (l *RList) Clone() *RList {
-	n := len(l.Sitemap)
-	remote := &RList{
-		Weave:     make([]Atom, len(l.Weave)),
-		Cursor:    l.Cursor,
+// Clone copies all information of a tree without creating a new site.
+func (t *CausalTree) Clone() *CausalTree {
+	n := len(t.Sitemap)
+	remote := &CausalTree{
+		Weave:     make([]Atom, len(t.Weave)),
+		Cursor:    t.Cursor,
 		Yarns:     make([][]Atom, n),
 		Sitemap:   make([]uuid.UUID, n),
-		SiteID:    l.SiteID,
-		Timestamp: l.Timestamp,
+		SiteID:    t.SiteID,
+		Timestamp: t.Timestamp,
 	}
-	copy(remote.Weave, l.Weave)
-	for i, yarn := range l.Yarns {
+	copy(remote.Weave, t.Weave)
+	for i, yarn := range t.Yarns {
 		remote.Yarns[i] = make([]Atom, len(yarn))
 		copy(remote.Yarns[i], yarn)
 	}
-	copy(remote.Sitemap, l.Sitemap)
+	copy(remote.Sitemap, t.Sitemap)
 	return remote
 }

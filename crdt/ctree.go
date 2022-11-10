@@ -81,7 +81,7 @@ var (
 // | Basic data structures |
 // +-----------------------+
 
-// Atom represents an atomic operation within a replicated list.
+// Atom represents an atomic operation within a replicated tree.
 type Atom struct {
 	// ID is the identifier of this atom.
 	ID AtomID
@@ -102,7 +102,7 @@ type AtomID struct {
 	Timestamp uint32
 }
 
-// AtomValue is a list operation.
+// AtomValue is a tree operation.
 type AtomValue interface {
 	json.Marshaler
 	// AtomPriority returns where this atom should be placed compared with its siblings.
@@ -111,10 +111,10 @@ type AtomValue interface {
 	ValidateChild(child AtomValue) error
 }
 
-// RList is a replicated list data structure.
+// CausalTree is a replicated tree data structure.
 //
 // This data structure allows for 64K sites and 4G atoms in total.
-type RList struct {
+type CausalTree struct {
 	// Weave is the flat representation of a causal tree.
 	Weave []Atom
 	// Cursor is the ID of the causing atom for the next operation.
@@ -124,16 +124,16 @@ type RList struct {
 	// Sitemap is the ordered list of site IDs. The index in this sitemap is used to represent a site in atoms
 	// and yarns.
 	Sitemap []uuid.UUID
-	// SiteID is this list's site UUIDv1.
+	// SiteID is this tree's site UUIDv1.
 	SiteID uuid.UUID
-	// Timestamp is this list's Lamport timestamp.
+	// Timestamp is this tree's Lamport timestamp.
 	Timestamp uint32
 }
 
-// NewRList creates an initialized empty replicated list.
-func NewRList() *RList {
+// NewCausalTree creates an initialized empty replicated tree.
+func NewCausalTree() *CausalTree {
 	siteID := uuidv1()
-	return &RList{
+	return &CausalTree{
 		Weave:     nil,
 		Cursor:    AtomID{},
 		Yarns:     [][]Atom{nil},
@@ -155,32 +155,32 @@ func siteIndex(sitemap []uuid.UUID, siteID uuid.UUID) int {
 // Returns the index of an atom within the weave.
 //
 // Time complexity: O(atoms)
-func (l *RList) atomIndex(atomID AtomID) int {
+func (t *CausalTree) atomIndex(atomID AtomID) int {
 	if atomID.Timestamp == 0 {
 		return -1
 	}
-	for i, atom := range l.Weave {
+	for i, atom := range t.Weave {
 		if atom.ID == atomID {
 			return i
 		}
 	}
-	return len(l.Weave)
+	return len(t.Weave)
 }
 
 // Gets an atom from yarns.
 //
 // Time complexity: O(1)
-func (l *RList) getAtom(atomID AtomID) Atom {
-	return l.Yarns[atomID.Site][atomID.Index]
+func (t *CausalTree) getAtom(atomID AtomID) Atom {
+	return t.Yarns[atomID.Site][atomID.Index]
 }
 
 // Inserts an atom in the given weave index.
 //
 // Time complexity: O(atoms)
-func (l *RList) insertAtom(atom Atom, i int) {
-	l.Weave = append(l.Weave, Atom{})
-	copy(l.Weave[i+1:], l.Weave[i:])
-	l.Weave[i] = atom
+func (t *CausalTree) insertAtom(atom Atom, i int) {
+	t.Weave = append(t.Weave, Atom{})
+	copy(t.Weave[i+1:], t.Weave[i:])
+	t.Weave[i] = atom
 }
 
 // +--------+
@@ -276,59 +276,59 @@ func (id AtomID) remapSite(m indexMap) AtomID {
 // | Fork |
 // +------+
 
-// Fork a replicated list into an independent object.
+// Fork a replicated tree into an independent object.
 //
 // Time complexity: O(atoms)
-func (l *RList) Fork() (*RList, error) {
-	if len(l.Sitemap)-1 >= math.MaxUint16 {
+func (t *CausalTree) Fork() (*CausalTree, error) {
+	if len(t.Sitemap)-1 >= math.MaxUint16 {
 		return nil, ErrSiteLimitExceeded
 	}
 	newSiteID := uuidv1()
-	i := siteIndex(l.Sitemap, newSiteID)
-	if i == len(l.Sitemap) {
-		l.Yarns = append(l.Yarns, nil)
-		l.Sitemap = append(l.Sitemap, newSiteID)
+	i := siteIndex(t.Sitemap, newSiteID)
+	if i == len(t.Sitemap) {
+		t.Yarns = append(t.Yarns, nil)
+		t.Sitemap = append(t.Sitemap, newSiteID)
 	} else {
 		// Remap atoms in yarns and weave.
 		localRemap := make(indexMap)
-		for j := i; j < len(l.Sitemap); j++ {
+		for j := i; j < len(t.Sitemap); j++ {
 			localRemap.set(j, j+1)
 		}
-		for i, yarn := range l.Yarns {
+		for i, yarn := range t.Yarns {
 			for j, atom := range yarn {
-				l.Yarns[i][j] = atom.remapSite(localRemap)
+				t.Yarns[i][j] = atom.remapSite(localRemap)
 			}
 		}
-		for i, atom := range l.Weave {
-			l.Weave[i] = atom.remapSite(localRemap)
+		for i, atom := range t.Weave {
+			t.Weave[i] = atom.remapSite(localRemap)
 		}
-		l.Cursor = l.Cursor.remapSite(localRemap)
+		t.Cursor = t.Cursor.remapSite(localRemap)
 		// Insert empty yarn in local position.
-		l.Yarns = append(l.Yarns, nil)
-		copy(l.Yarns[i+1:], l.Yarns[i:])
-		l.Yarns[i] = nil
+		t.Yarns = append(t.Yarns, nil)
+		copy(t.Yarns[i+1:], t.Yarns[i:])
+		t.Yarns[i] = nil
 		// Insert site ID into local sitemap.
-		l.Sitemap = append(l.Sitemap, uuid.Nil)
-		copy(l.Sitemap[i+1:], l.Sitemap[i:])
-		l.Sitemap[i] = newSiteID
+		t.Sitemap = append(t.Sitemap, uuid.Nil)
+		copy(t.Sitemap[i+1:], t.Sitemap[i:])
+		t.Sitemap[i] = newSiteID
 	}
-	// Copy data to remote list.
-	n := len(l.Sitemap)
-	l.Timestamp++
-	remote := &RList{
-		Weave:     make([]Atom, len(l.Weave)),
-		Cursor:    l.Cursor,
+	// Copy data to remote tree.
+	n := len(t.Sitemap)
+	t.Timestamp++
+	remote := &CausalTree{
+		Weave:     make([]Atom, len(t.Weave)),
+		Cursor:    t.Cursor,
 		Yarns:     make([][]Atom, n),
 		Sitemap:   make([]uuid.UUID, n),
 		SiteID:    newSiteID,
-		Timestamp: l.Timestamp,
+		Timestamp: t.Timestamp,
 	}
-	copy(remote.Weave, l.Weave)
-	for i, yarn := range l.Yarns {
+	copy(remote.Weave, t.Weave)
+	for i, yarn := range t.Yarns {
 		remote.Yarns[i] = make([]Atom, len(yarn))
 		copy(remote.Yarns[i], yarn)
 	}
-	copy(remote.Sitemap, l.Sitemap)
+	copy(remote.Sitemap, t.Sitemap)
 	return remote, nil
 }
 
@@ -409,20 +409,20 @@ func mergeWeaves(w1, w2 []Atom) []Atom {
 	return weave
 }
 
-// Merge updates the current state with that of another remote list.
+// Merge updates the current state with that of another remote tree.
 // Note that merge does not move the cursor.
 //
 // Time complexity: O(atoms^2 + sites*log(sites))
-func (l *RList) Merge(remote *RList) {
+func (t *CausalTree) Merge(remote *CausalTree) {
 	// 1. Merge sitemaps.
 	// Time complexity: O(sites)
-	sitemap := mergeSitemaps(l.Sitemap, remote.Sitemap)
+	sitemap := mergeSitemaps(t.Sitemap, remote.Sitemap)
 
 	// 2. Compute site index remapping.
 	// Time complexity: O(sites*log(sites))
 	localRemap := make(indexMap)
 	remoteRemap := make(indexMap)
-	for i, site := range l.Sitemap {
+	for i, site := range t.Sitemap {
 		localRemap.set(i, siteIndex(sitemap, site))
 	}
 	for i, site := range remote.Sitemap {
@@ -433,18 +433,18 @@ func (l *RList) Merge(remote *RList) {
 	// Time complexity: O(atoms)
 	yarns := make([][]Atom, len(sitemap))
 	if len(localRemap) > 0 {
-		for i, yarn := range l.Yarns {
+		for i, yarn := range t.Yarns {
 			i := localRemap.get(i)
 			yarns[i] = make([]Atom, len(yarn))
 			for j, atom := range yarn {
 				yarns[i][j] = atom.remapSite(localRemap)
 			}
 		}
-		for i, atom := range l.Weave {
-			l.Weave[i] = atom.remapSite(localRemap)
+		for i, atom := range t.Weave {
+			t.Weave[i] = atom.remapSite(localRemap)
 		}
 	} else {
-		for i, yarn := range l.Yarns {
+		for i, yarn := range t.Yarns {
 			yarns[i] = make([]Atom, len(yarn))
 			copy(yarns[i], yarn)
 		}
@@ -472,20 +472,20 @@ func (l *RList) Merge(remote *RList) {
 	for i, atom := range remote.Weave {
 		remoteWeave[i] = atom.remapSite(remoteRemap)
 	}
-	l.Weave = mergeWeaves(l.Weave, remoteWeave)
+	t.Weave = mergeWeaves(t.Weave, remoteWeave)
 
-	// Move created stuff to this list.
-	l.Yarns = yarns
-	l.Sitemap = sitemap
-	if l.Timestamp < remote.Timestamp {
-		l.Timestamp = remote.Timestamp
+	// Move created stuff to this tree.
+	t.Yarns = yarns
+	t.Sitemap = sitemap
+	if t.Timestamp < remote.Timestamp {
+		t.Timestamp = remote.Timestamp
 	}
-	l.Timestamp++
+	t.Timestamp++
 
 	// 6. Fix cursor if necessary.
 	// Time complexity: O(atoms^2)
-	l.Cursor = l.Cursor.remapSite(localRemap)
-	l.fixDeletedCursor()
+	t.Cursor = t.Cursor.remapSite(localRemap)
+	t.fixDeletedCursor()
 }
 
 // -----
@@ -535,13 +535,13 @@ func causalBlockSize(block []Atom) int {
 // Returns whether the atom is deleted.
 //
 // Time complexity: O(atoms), or, O(avg. block size)
-func (l *RList) isDeleted(atomID AtomID) bool {
-	i := l.atomIndex(atomID)
+func (t *CausalTree) isDeleted(atomID AtomID) bool {
+	i := t.atomIndex(atomID)
 	if i < 0 {
 		return false
 	}
 	var isDeleted bool
-	walkChildren(l.Weave[i:], func(child Atom) bool {
+	walkChildren(t.Weave[i:], func(child Atom) bool {
 		if _, ok := child.Value.(Delete); ok {
 			isDeleted = true
 			return false
@@ -557,15 +557,15 @@ func (l *RList) isDeleted(atomID AtomID) bool {
 	return isDeleted
 }
 
-// Ensure list's cursor isn't deleted, finding the first non-deleted ancestor.
+// Ensure tree's cursor isn't deleted, finding the first non-deleted ancestor.
 //
 // Time complexity: O(atoms^2), or, O((avg. tree height) * (avg. block size))
-func (l *RList) fixDeletedCursor() {
+func (t *CausalTree) fixDeletedCursor() {
 	for {
-		if !l.isDeleted(l.Cursor) {
+		if !t.isDeleted(t.Cursor) {
 			break
 		}
-		l.Cursor = l.getAtom(l.Cursor).Cause
+		t.Cursor = t.getAtom(t.Cursor).Cause
 	}
 }
 
@@ -573,7 +573,7 @@ func (l *RList) fixDeletedCursor() {
 // + Time travel |
 // +-------------+
 
-// Weft is a clock that stores the timestamp of each site of a RList.
+// Weft is a clock that stores the timestamp of each site of a CausalTree.
 //
 // In a distributed system it's not possible to observe the whole state at an absolute time,
 // but we can view the site's state at each site time.
@@ -621,17 +621,17 @@ func (ixs indexWeft) isInView(id AtomID) bool {
 // in other sites.
 //
 // Time complexity: O(atoms)
-func (l *RList) checkWeft(weft Weft) (indexWeft, error) {
-	if len(l.Yarns) != len(weft) {
+func (t *CausalTree) checkWeft(weft Weft) (indexWeft, error) {
+	if len(t.Yarns) != len(weft) {
 		return nil, ErrWeftInvalidLength
 	}
 	// Initialize limits at each yarn.
 	limits := make(indexWeft, len(weft))
-	for i, yarn := range l.Yarns {
+	for i, yarn := range t.Yarns {
 		limits[i] = len(yarn)
 	}
 	// Look for max timestamp at each yarn.
-	for i, yarn := range l.Yarns {
+	for i, yarn := range t.Yarns {
 		tmax := weft[i]
 		for j, atom := range yarn {
 			if atom.ID.Timestamp > tmax {
@@ -641,7 +641,7 @@ func (l *RList) checkWeft(weft Weft) (indexWeft, error) {
 		}
 	}
 	// Verify that all causes are present at the weft cut.
-	for i, yarn := range l.Yarns {
+	for i, yarn := range t.Yarns {
 		limit := limits[i]
 		for _, atom := range yarn[:limit] {
 			if !limits.isInView(atom.Cause) {
@@ -653,9 +653,9 @@ func (l *RList) checkWeft(weft Weft) (indexWeft, error) {
 }
 
 // Now returns the last known time at every site as a weft.
-func (l *RList) Now() Weft {
-	weft := make(Weft, len(l.Yarns))
-	for i, yarn := range l.Yarns {
+func (t *CausalTree) Now() Weft {
+	weft := make(Weft, len(t.Yarns))
+	for i, yarn := range t.Yarns {
 		n := len(yarn)
 		if n == 0 {
 			continue
@@ -665,42 +665,42 @@ func (l *RList) Now() Weft {
 	return weft
 }
 
-// ViewAt returns a view of the list in the provided time in the past, represented with a weft.
+// ViewAt returns a view of the tree in the provided time in the past, represented with a weft.
 //
 // Time complexity: O(atoms+sites)
-func (l *RList) ViewAt(weft Weft) (*RList, error) {
-	limits, err := l.checkWeft(weft)
+func (t *CausalTree) ViewAt(weft Weft) (*CausalTree, error) {
+	limits, err := t.checkWeft(weft)
 	if err != nil {
 		return nil, err
 	}
 	n := len(limits)
 	yarns := make([][]Atom, n)
-	for i, yarn := range l.Yarns {
+	for i, yarn := range t.Yarns {
 		yarns[i] = make([]Atom, limits[i])
 		copy(yarns[i], yarn)
 	}
-	weave := make([]Atom, 0, len(l.Weave))
-	for _, atom := range l.Weave {
+	weave := make([]Atom, 0, len(t.Weave))
+	for _, atom := range t.Weave {
 		if limits.isInView(atom.ID) {
 			weave = append(weave, atom)
 		}
 	}
 	sitemap := make([]uuid.UUID, n)
-	copy(sitemap, l.Sitemap)
+	copy(sitemap, t.Sitemap)
 	// Set cursor, if it still exists in this view.
-	cursor := l.Cursor
+	cursor := t.Cursor
 	if !limits.isInView(cursor) {
 		cursor = AtomID{}
 	}
 	//
-	i := siteIndex(l.Sitemap, l.SiteID)
+	i := siteIndex(t.Sitemap, t.SiteID)
 	tmax := weft[i]
-	view := &RList{
+	view := &CausalTree{
 		Weave:     weave,
 		Cursor:    cursor,
 		Yarns:     yarns,
 		Sitemap:   sitemap,
-		SiteID:    l.SiteID,
+		SiteID:    t.SiteID,
 		Timestamp: tmax,
 	}
 	return view, nil
@@ -710,7 +710,7 @@ func (l *RList) ViewAt(weft Weft) (*RList, error) {
 // | Operations - Errors |
 // +---------------------+
 
-// Errors returned by RList operations
+// Errors returned by CausalTree operations
 var (
 	ErrSiteLimitExceeded  = errors.New("reached limit of sites: 2¹⁶ (65.536)")
 	ErrStateLimitExceeded = errors.New("reached limit of states: 2³² (4.294.967.296)")
@@ -725,10 +725,10 @@ var (
 // +------------+
 
 // Time complexity: O(atoms), or, O(atoms + (avg. block size))
-func (l *RList) insertAtomAtCursor(atom Atom) {
-	if l.Cursor.Timestamp == 0 {
+func (t *CausalTree) insertAtomAtCursor(atom Atom) {
+	if t.Cursor.Timestamp == 0 {
 		// Cursor is at initial position.
-		l.insertAtom(atom, 0)
+		t.insertAtom(atom, 0)
 		return
 	}
 	// Search for position in weave that atom should be inserted, in a way that it's sorted relative to
@@ -739,11 +739,11 @@ func (l *RList) insertAtomAtCursor(atom Atom) {
 	// Weave:           ... [cursor] [child1] ... [child2] ... [child3] ... [not child]
 	// Block indices:           0         1          c2'          c3'           end'
 	// Weave indices:          c0        c1          c2           c3            end
-	c0 := l.atomIndex(l.Cursor)
+	c0 := t.atomIndex(t.Cursor)
 	var pos, i int
-	walkCausalBlock(l.Weave[c0:], func(a Atom) bool {
+	walkCausalBlock(t.Weave[c0:], func(a Atom) bool {
 		i++
-		if a.Cause == l.Cursor && a.Compare(atom) < 0 && pos == 0 {
+		if a.Cause == t.Cursor && a.Compare(atom) < 0 && pos == 0 {
 			// a is the first child smaller than atom.
 			pos = i
 		}
@@ -753,37 +753,37 @@ func (l *RList) insertAtomAtCursor(atom Atom) {
 	if pos > 0 {
 		index = c0 + pos
 	}
-	l.insertAtom(atom, index)
+	t.insertAtom(atom, index)
 }
 
 // Inserts the atom as a child of the cursor, and returns its ID.
 //
 // Time complexity: O(atoms + log(sites))
-func (l *RList) addAtom(value AtomValue) (AtomID, error) {
-	l.Timestamp++
-	if l.Timestamp == 0 {
+func (t *CausalTree) addAtom(value AtomValue) (AtomID, error) {
+	t.Timestamp++
+	if t.Timestamp == 0 {
 		// Overflow
 		return AtomID{}, ErrStateLimitExceeded
 	}
-	if l.Cursor.Timestamp > 0 {
-		cursorAtom := l.getAtom(l.Cursor)
+	if t.Cursor.Timestamp > 0 {
+		cursorAtom := t.getAtom(t.Cursor)
 		if err := cursorAtom.Value.ValidateChild(value); err != nil {
 			return AtomID{}, err
 		}
 	}
-	i := siteIndex(l.Sitemap, l.SiteID)
+	i := siteIndex(t.Sitemap, t.SiteID)
 	atomID := AtomID{
 		Site:      uint16(i),
-		Index:     uint32(len(l.Yarns[i])),
-		Timestamp: l.Timestamp,
+		Index:     uint32(len(t.Yarns[i])),
+		Timestamp: t.Timestamp,
 	}
 	atom := Atom{
 		ID:    atomID,
-		Cause: l.Cursor,
+		Cause: t.Cursor,
 		Value: value,
 	}
-	l.insertAtomAtCursor(atom)
-	l.Yarns[i] = append(l.Yarns[i], atom)
+	t.insertAtomAtCursor(atom)
+	t.Yarns[i] = append(t.Yarns[i], atom)
 	return atomID, nil
 }
 
@@ -812,15 +812,15 @@ func deleteDescendants(block []Atom, atomIndex int) {
 }
 
 // Time complexity: O(atoms)
-func (l *RList) filterDeleted() []Atom {
-	atoms := make([]Atom, len(l.Weave))
-	copy(atoms, l.Weave)
+func (t *CausalTree) filterDeleted() []Atom {
+	atoms := make([]Atom, len(t.Weave))
+	copy(atoms, t.Weave)
 	indices := make(map[AtomID]int)
 	var hasDelete bool
-	for i, atom := range l.Weave {
+	for i, atom := range t.Weave {
 		indices[atom.ID] = i
 	}
-	for i, atom := range l.Weave {
+	for i, atom := range t.Weave {
 		if _, ok := atom.Value.(Delete); ok {
 			hasDelete = true
 			// Deletion must always come after deleted atom, so
@@ -851,22 +851,22 @@ func (l *RList) filterDeleted() []Atom {
 	return atoms
 }
 
-// Sets cursor to the given (list) position.
+// Sets cursor to the given (tree) position.
 //
 // To insert an atom at the beginning, use i = -1.
-func (l *RList) SetCursor(i int) error {
+func (t *CausalTree) SetCursor(i int) error {
 	if i < 0 {
 		if i == -1 {
-			l.Cursor = AtomID{}
+			t.Cursor = AtomID{}
 			return nil
 		}
 		return ErrCursorOutOfRange
 	}
-	atoms := l.filterDeleted()
+	atoms := t.filterDeleted()
 	if i >= len(atoms) {
 		return ErrCursorOutOfRange
 	}
-	l.Cursor = atoms[i].ID
+	t.Cursor = atoms[i].ID
 	return nil
 }
 
@@ -876,7 +876,7 @@ func (l *RList) SetCursor(i int) error {
 
 // InsertChar represents insertion of a char to the right of another atom.
 type InsertChar struct {
-	// Char inserted in list.
+	// Char inserted in tree.
 	Char rune
 }
 
@@ -896,28 +896,28 @@ func (v InsertChar) ValidateChild(child AtomValue) error {
 }
 
 // InsertChar inserts a char after the cursor position and advances the cursor.
-func (l *RList) InsertChar(ch rune) error {
-	atomID, err := l.addAtom(InsertChar{ch})
+func (t *CausalTree) InsertChar(ch rune) error {
+	atomID, err := t.addAtom(InsertChar{ch})
 	if err != nil {
 		return err
 	}
-	l.Cursor = atomID
+	t.Cursor = atomID
 	return nil
 }
 
-// InsertCharAt inserts a char after the given (list) position.
-func (l *RList) InsertCharAt(ch rune, i int) error {
-	if err := l.SetCursor(i); err != nil {
+// InsertCharAt inserts a char after the given (tree) position.
+func (t *CausalTree) InsertCharAt(ch rune, i int) error {
+	if err := t.SetCursor(i); err != nil {
 		return err
 	}
-	return l.InsertChar(ch)
+	return t.InsertChar(ch)
 }
 
 // +---------------------+
 // | Operations - Delete |
 // +---------------------+
 
-// Delete represents deleting an element from the list.
+// Delete represents deleting an element from the tree.
 type Delete struct{}
 
 func (v Delete) AtomPriority() int { return 100 }
@@ -931,23 +931,23 @@ func (v Delete) ValidateChild(child AtomValue) error {
 }
 
 // DeleteChar deletes the char at the cursor position, and relocates the cursor to its cause.
-func (l *RList) DeleteChar() error {
-	if l.Cursor.Timestamp == 0 {
+func (t *CausalTree) DeleteChar() error {
+	if t.Cursor.Timestamp == 0 {
 		return ErrNoAtomToDelete
 	}
-	if _, err := l.addAtom(Delete{}); err != nil {
+	if _, err := t.addAtom(Delete{}); err != nil {
 		return err
 	}
-	l.fixDeletedCursor()
+	t.fixDeletedCursor()
 	return nil
 }
 
-// DeleteCharAt deletes the char at the given (list) position.
-func (l *RList) DeleteCharAt(i int) error {
-	if err := l.SetCursor(i); err != nil {
+// DeleteCharAt deletes the char at the given (tree) position.
+func (t *CausalTree) DeleteCharAt(i int) error {
+	if err := t.SetCursor(i); err != nil {
 		return err
 	}
-	return l.DeleteChar()
+	return t.DeleteChar()
 }
 
 // +-----------------------------------+
@@ -974,10 +974,10 @@ func (v InsertStr) ValidateChild(child AtomValue) error {
 }
 
 // InsertStr inserts a Str container after the cursor position and advances the cursor.
-func (l *RList) InsertStr() error {
-	l.Cursor = AtomID{}
-	atomID, err := l.addAtom(InsertStr{})
-	l.Cursor = atomID
+func (t *CausalTree) InsertStr() error {
+	t.Cursor = AtomID{}
+	atomID, err := t.addAtom(InsertStr{})
+	t.Cursor = atomID
 	return err
 }
 
@@ -985,9 +985,9 @@ func (l *RList) InsertStr() error {
 // | Conversion |
 // +------------+
 
-// ToString interprets list as a sequence of chars.
-func (l *RList) ToString() string {
-	atoms := l.filterDeleted()
+// ToString interprets tree as a sequence of chars.
+func (t *CausalTree) ToString() string {
+	atoms := t.filterDeleted()
 	chars := make([]rune, len(atoms))
 	for i, atom := range atoms {
 		switch value := atom.Value.(type) {
@@ -1003,10 +1003,10 @@ func (l *RList) ToString() string {
 // this interface represents a generic type.
 type generic interface{}
 
-// ToJSON interprets list as a JSON.
-func (l *RList) ToJSON() ([]byte, error) {
+// ToJSON interprets tree as a JSON.
+func (t *CausalTree) ToJSON() ([]byte, error) {
 	tab := "    "
-	atoms := l.filterDeleted()
+	atoms := t.filterDeleted()
 	var elements []generic
 	for i := 0; i < len(atoms); {
 		currentAtomValue := atoms[i].Value

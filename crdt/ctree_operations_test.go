@@ -13,7 +13,7 @@ import (
 	"github.com/brunokim/causal-tree/crdt"
 )
 
-// Tests are structured as a sequence of operations on a list of lists.
+// Tests are structured as a sequence of operations on a list of trees.
 //
 // This indirection allows us to perform some actions for every mutation, like
 // dumping their internals to a file, and also allow us to fuzz list manipulation.
@@ -30,9 +30,9 @@ import (
 // merge <local> <remote>            -- merge list 'remote' into list 'local'.
 // check <local> <str>               -- check that the contents of 'local' spell 'str'.
 //
-// Lists are referred by their order of creation, NOT by their sitemap index.
+// Trees are referred by their order of creation, NOT by their sitemap index.
 // The fork operation requires specifying the correct remote index, even if it can be
-// inferred from the number of already created lists, just to improve readability.
+// inferred from the number of already created trees, just to improve readability.
 // 'list-position' refers to the position in the *resulting* list, not in the weave.
 
 type operationType int
@@ -71,19 +71,19 @@ type operation struct {
 func (op operation) String() string {
 	switch op.op {
 	case insertChar:
-		return fmt.Sprintf("insert %c at list #%d", op.char, op.local)
+		return fmt.Sprintf("insert %c at tree #%d", op.char, op.local)
 	case deleteChar:
-		return fmt.Sprintf("delete char from list #%d", op.local)
+		return fmt.Sprintf("delete char from tree #%d", op.local)
 	case setCursor:
-		return fmt.Sprintf("set cursor @ %d at list #%d", op.pos, op.local)
+		return fmt.Sprintf("set cursor @ %d at tree #%d", op.pos, op.local)
 	case insertCharAt:
-		return fmt.Sprintf("insert %c @ %d at list #%d", op.char, op.pos, op.local)
+		return fmt.Sprintf("insert %c @ %d at tree #%d", op.char, op.pos, op.local)
 	case deleteCharAt:
-		return fmt.Sprintf("delete char @ %d from list #%d", op.pos, op.local)
+		return fmt.Sprintf("delete char @ %d from tree #%d", op.pos, op.local)
 	case fork:
-		return fmt.Sprintf("fork list #%d into list #%d", op.local, op.remote)
+		return fmt.Sprintf("fork tree #%d into tree #%d", op.local, op.remote)
 	case merge:
-		return fmt.Sprintf("merge list #%d into list #%d", op.remote, op.local)
+		return fmt.Sprintf("merge tree #%d into tree #%d", op.remote, op.local)
 	}
 	return ""
 }
@@ -146,52 +146,52 @@ func setupTestFile(name string) (*os.File, error) {
 }
 
 // Execute sequence of operations dumping intermediate data structures into testdata.
-func testOperations(t *testing.T, ops []operation) []*crdt.RList {
+func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 	must := func(err error) {
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
 	}
-	lists := []*crdt.RList{crdt.NewRList()}
+	trees := []*crdt.CausalTree{crdt.NewCausalTree()}
 	f, err := setupTestFile(t.Name())
 	if err != nil {
 		t.Log(err)
 	}
 	for i, op := range ops {
-		list := lists[op.local]
+		tree := trees[op.local]
 		switch op.op {
 		case insertChar:
-			must(list.InsertChar(op.char))
+			must(tree.InsertChar(op.char))
 		case deleteChar:
-			must(list.DeleteChar())
+			must(tree.DeleteChar())
 		case setCursor:
-			list.SetCursor(op.pos)
+			tree.SetCursor(op.pos)
 		case insertStr:
-			list.InsertStr()
+			tree.InsertStr()
 		case insertCharAt:
-			must(list.InsertCharAt(op.char, op.pos))
+			must(tree.InsertCharAt(op.char, op.pos))
 		case deleteCharAt:
-			must(list.DeleteCharAt(op.pos))
+			must(tree.DeleteCharAt(op.pos))
 		case fork:
-			if op.remote != len(lists) {
-				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(lists))
+			if op.remote != len(trees) {
+				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(trees))
 			}
-			remote, err := list.Fork()
+			remote, err := tree.Fork()
 			must(err)
-			lists = append(lists, remote)
+			trees = append(trees, remote)
 		case merge:
-			list.Merge(lists[op.remote])
+			tree.Merge(trees[op.remote])
 		case check:
-			if s := list.ToString(); s != op.str {
-				t.Errorf("%d: got list[%d] = %q, want %q", i, op.local, s, op.str)
+			if s := tree.ToString(); s != op.str {
+				t.Errorf("%d: got tree[%d] = %q, want %q", i, op.local, s, op.str)
 			}
 		}
-		// Dump lists into testfile.
+		// Dump trees into testfile.
 		if f != nil && op.op != check {
 			bs, err := json.Marshal(map[string]interface{}{
 				"Type":   "test",
 				"Action": op.String(),
-				"Sites":  lists,
+				"Sites":  trees,
 			})
 			if err != nil {
 				t.Log(err)
@@ -206,51 +206,51 @@ func testOperations(t *testing.T, ops []operation) []*crdt.RList {
 	if f != nil {
 		f.Close()
 	}
-	return lists
+	return trees
 }
 
 // -----
 
 // Execute list of operations, checking if they are well-formed.
 func validateOperations(ops []operation) error {
-	lists := []*crdt.RList{crdt.NewRList()}
+	trees := []*crdt.CausalTree{crdt.NewCausalTree()}
 	for _, op := range ops {
-		if op.local >= len(lists) {
-			return fmt.Errorf("invalid local index %d (len: %d), op: %v", op.local, len(lists), op)
+		if op.local >= len(trees) {
+			return fmt.Errorf("invalid local index %d (len: %d), op: %v", op.local, len(trees), op)
 		}
-		list := lists[op.local]
+		tree := trees[op.local]
 		switch op.op {
 		case insertChar:
-			if err := list.InsertChar(op.char); err != nil {
+			if err := tree.InsertChar(op.char); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case deleteChar:
-			if err := list.DeleteChar(); err != nil {
+			if err := tree.DeleteChar(); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case setCursor:
-			if err := list.SetCursor(op.pos); err != nil {
+			if err := tree.SetCursor(op.pos); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case insertCharAt:
-			if err := list.InsertCharAt(op.char, op.pos); err != nil {
+			if err := tree.InsertCharAt(op.char, op.pos); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case deleteCharAt:
-			if err := list.DeleteCharAt(op.pos); err != nil {
+			if err := tree.DeleteCharAt(op.pos); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case fork:
-			if remote, err := list.Fork(); err != nil {
+			if remote, err := tree.Fork(); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			} else {
-				lists = append(lists, remote)
+				trees = append(trees, remote)
 			}
 		case merge:
-			if op.remote >= len(lists) {
-				return fmt.Errorf("invalid remote index %d (len: %d), op: %v", op.remote, len(lists), op)
+			if op.remote >= len(trees) {
+				return fmt.Errorf("invalid remote index %d (len: %d), op: %v", op.remote, len(trees), op)
 			} else {
-				list.Merge(lists[op.remote])
+				tree.Merge(trees[op.remote])
 			}
 		default:
 			return fmt.Errorf("invalid op %v", op.op)
@@ -286,28 +286,28 @@ func readFuzzData(filename string) ([]byte, error) {
 
 // -----
 
-// Make a list randomly, using some other sites to make it interesting.
-func makeRandomList(size int, r *rand.Rand) (*crdt.RList, error) {
+// Make a tree randomly, using some other sites to make it interesting.
+func makeRandomTree(size int, r *rand.Rand) (*crdt.CausalTree, error) {
 	const numLists = 10
-	// Create lists forking from lists[0]
-	lists := make([]*crdt.RList, numLists)
-	lists[0] = crdt.NewRList()
+	// Create trees forking from trees[0]
+	trees := make([]*crdt.CausalTree, numLists)
+	trees[0] = crdt.NewCausalTree()
 	for i := 1; i < numLists; i++ {
-		l, err := lists[0].Fork()
+		t, err := trees[0].Fork()
 		if err != nil {
 			return nil, err
 		}
-		lists[i] = l
+		trees[i] = t
 	}
 	n := 0
 	for n < size {
-		// Pick a random list.
+		// Pick a random tree.
 		i := r.Intn(numLists)
-		l := lists[i]
+		t := trees[i]
 		if i > 0 {
-			l.Merge(lists[0])
+			t.Merge(trees[0])
 		}
-		// Insert or deletes 2-5 chars at list.
+		// Insert or deletes 2-5 chars at tree.
 		// 40%: inserts char at random.
 		// 40%: inserts char at last position.
 		// 10%: deletes char at random.
@@ -319,17 +319,17 @@ func makeRandomList(size int, r *rand.Rand) (*crdt.RList, error) {
 			p := r.Float64()
 			if p < 0.4 {
 				pos := r.Intn(n+1) - 1 // pos in [-1,n)
-				err = l.InsertCharAt(ch, pos)
+				err = t.InsertCharAt(ch, pos)
 				n++
 			} else if p < 0.8 {
-				err = l.InsertChar(ch)
+				err = t.InsertChar(ch)
 				n++
 			} else if p < 0.9 && n > 0 {
 				pos := r.Intn(n)
-				err = l.DeleteCharAt(pos)
+				err = t.DeleteCharAt(pos)
 				n--
-			} else if l.Cursor != (crdt.AtomID{}) {
-				err = l.DeleteChar()
+			} else if t.Cursor != (crdt.AtomID{}) {
+				err = t.DeleteChar()
 				n--
 			}
 			if err != nil {
@@ -337,8 +337,8 @@ func makeRandomList(size int, r *rand.Rand) (*crdt.RList, error) {
 			}
 		}
 		if i > 0 {
-			lists[0].Merge(l)
+			trees[0].Merge(t)
 		}
 	}
-	return lists[0], nil
+	return trees[0], nil
 }
