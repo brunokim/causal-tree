@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+type Register interface {
+	SetString() *String
+	SetCounter() *Counter
+	SetList() *List
+	Value() Value
+}
+
 type Container interface {
 	Cursor() Cursor
 }
@@ -269,8 +276,8 @@ func (t *CausalTree) findNonDeletedCause(loc int) (AtomID, int) {
 
 // ----
 
-func (t *CausalTree) NewString() *String {
-	id, loc := t.addAtom(0, -1, stringTag, 0)
+func (t *CausalTree) newString(atomID AtomID, loc int) *String {
+	id, loc := t.addAtom(atomID, loc, stringTag, 0)
 	return &String{
 		tree:   t,
 		atomID: id,
@@ -278,8 +285,8 @@ func (t *CausalTree) NewString() *String {
 	}
 }
 
-func (t *CausalTree) NewCounter() *Counter {
-	id, loc := t.addAtom(0, -1, counterTag, 0)
+func (t *CausalTree) newCounter(atomID AtomID, loc int) *Counter {
+	id, loc := t.addAtom(atomID, loc, counterTag, 0)
 	return &Counter{
 		tree:   t,
 		atomID: id,
@@ -287,8 +294,8 @@ func (t *CausalTree) NewCounter() *Counter {
 	}
 }
 
-func (t *CausalTree) NewList() *List {
-	id, loc := t.addAtom(0, -1, listTag, 0)
+func (t *CausalTree) newList(atomID AtomID, loc int) *List {
+	id, loc := t.addAtom(atomID, loc, listTag, 0)
 	return &List{
 		tree:   t,
 		atomID: id,
@@ -296,45 +303,10 @@ func (t *CausalTree) NewList() *List {
 	}
 }
 
-type TreeCursor struct {
-	tree   *CausalTree
-	atomID AtomID
-	minLoc int
-}
-
-func (t *CausalTree) Cursor() *TreeCursor {
-	return &TreeCursor{t, 0, -1}
-}
-
-func (c *TreeCursor) Index(i int) {
-	if i < 0 {
-		panic("Invalid negative index")
-	}
-	t := c.tree
-	loc := t.searchAtom(c.atomID, c.minLoc)
-
-	cnt := -1
-	for j := loc + 1; j < len(t.atoms); j++ {
-		atom := t.atoms[j]
-		if atom.causeID == 0 {
-			cnt++
-			if cnt == i {
-				loc = j
-				break
-			}
-		}
-	}
-	if cnt < i {
-		panic(fmt.Sprintf("tree: index out of range: %d (size=%d)", i, cnt))
-	}
-	c.minLoc = loc
-	c.atomID = t.atoms[loc].id
-}
-
-func (c *TreeCursor) Value() Value {
-	loc := c.tree.searchAtom(c.atomID, c.minLoc)
-	return c.tree.valueOf(loc)
-}
+func (t *CausalTree) SetString() *String   { return t.newString(0, -1) }
+func (t *CausalTree) SetCounter() *Counter { return t.newCounter(0, -1) }
+func (t *CausalTree) SetList() *List       { return t.newList(0, -1) }
+func (t *CausalTree) Value() Value         { return t.valueOf(0) }
 
 func (t *CausalTree) valueOf(i int) Value {
 	atom := t.atoms[i]
@@ -352,17 +324,12 @@ func (t *CausalTree) valueOf(i int) Value {
 
 // ----
 
-func (t *CausalTree) Snapshot() []interface{} {
-	i := 0
-	var result []interface{}
-	for i < len(t.atoms) {
-		obj, size, isDeleted := t.snapshot(i)
-		if !isDeleted {
-			result = append(result, obj)
-		}
-		i += size
+func (t *CausalTree) Snapshot() interface{} {
+	obj, _, isDeleted := t.snapshot(0)
+	if isDeleted {
+		return nil
 	}
-	return result
+	return obj
 }
 
 func (t *CausalTree) snapshot(i int) (interface{}, int, bool) {
@@ -637,34 +604,47 @@ func (e *Elem) Delete() {
 	e.minLoc = loc
 }
 
-func (e *Elem) NewString() *String {
+func (e *Elem) SetString() *String {
 	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	id, loc := e.tree.addAtom(e.atomID, loc, stringTag, 0)
-	return &String{
-		tree:   e.tree,
-		atomID: id,
-		minLoc: loc,
-	}
+	e.minLoc = loc
+	return e.tree.newString(e.atomID, loc)
 }
 
-func (e *Elem) NewCounter() *Counter {
+func (e *Elem) SetCounter() *Counter {
 	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	id, loc := e.tree.addAtom(e.atomID, loc, counterTag, 0)
-	return &Counter{
-		tree:   e.tree,
-		atomID: id,
-		minLoc: loc,
-	}
+	e.minLoc = loc
+	return e.tree.newCounter(e.atomID, loc)
 }
 
-func (e *Elem) NewList() *List {
+func (e *Elem) SetList() *List {
 	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	id, loc := e.tree.addAtom(e.atomID, loc, listTag, 0)
-	return &List{
-		tree:   e.tree,
-		atomID: id,
-		minLoc: loc,
+	e.minLoc = loc
+	return e.tree.newList(e.atomID, loc)
+}
+
+func (e *Elem) Value() Value {
+	loc := e.tree.searchAtom(e.atomID, e.minLoc)
+	e.minLoc = loc
+
+	j := loc + 1
+	for j < len(e.tree.atoms) && e.tree.withinBlock(j, loc) {
+		atom := e.tree.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			// Elem is deleted, but do nothing.
+			j++
+		case stringTag:
+			return &String{e.tree, atom.id, j}
+		case counterTag:
+			return &Counter{e.tree, atom.id, j}
+		case listTag:
+			return &List{e.tree, atom.id, j}
+		default:
+			panic(fmt.Sprintf("elem: unexpected tag: %v", atom.tag))
+		}
 	}
+	// Empty elem.
+	return nil
 }
 
 // ----
@@ -740,56 +720,89 @@ func (c *ListCursor) Delete() {
 func main() {
 	t := new(CausalTree)
 	//
-	s1 := t.NewString()
 	{
+		s1 := t.SetString()
 		cursor := s1.StringCursor()
 		cursor.Insert('c')
 		cursor.Insert('r')
 		cursor.Insert('d')
 		cursor.Insert('t')
-		fmt.Println(t.Snapshot())
+		fmt.Println("set string:", t.Snapshot())
 	}
 	//
-	s2 := t.NewString()
 	{
+		s2 := t.SetString()
 		cursor := s2.StringCursor()
 		cursor.Insert('w')
 		cursor.Insert('o')
 		cursor.Insert('w')
-		fmt.Println(t.Snapshot())
+		fmt.Println("set string:", t.Snapshot())
 	}
 	// Abstract walk, must know insertion order.
 	{
-		x1 := ValueAt(t.Cursor(), 1).(Container)
+		x1 := t.Value().(Container)
 		x2 := ValueAt(x1.Cursor(), 2)
 		x2.Delete()
-		fmt.Println(t.Snapshot())
+		fmt.Println("delete $.2:", t.Snapshot())
 	}
 	// Insert a counter
-	cnt := t.NewCounter()
 	{
+		cnt := t.SetCounter()
 		cnt.Increment(45)
 		cnt.Decrement(3)
-		fmt.Println(t.Snapshot())
+		fmt.Println("set counter:", t.Snapshot())
+	}
+	// Insert list
+	l1 := t.SetList()
+	{
+		cursor := l1.ListCursor()
+		// counter element
+		cursor.Insert().SetCounter().Increment(10)
+		// nil element
+		cursor.Insert()
+		// string element
+		strCursor := cursor.Insert().SetString().StringCursor()
+		strCursor.Insert('d')
+		strCursor.Insert('o')
+		strCursor.Insert('g')
+
+		fmt.Println("set list:", t.Snapshot())
+	}
+	// Modify embedded counter
+	{
+		cnt := ValueAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
+		cnt.Increment(40)
+		cnt.Decrement(8)
+		fmt.Println("modify counter:", t.Snapshot())
 	}
 	// Modify a string after it was pushed to the right by the previous insertion.
 	{
+		s2 := ValueAt(l1.Cursor(), 2).(*Elem).Value().(*String)
 		cursor := s2.StringCursor()
 		cursor.Index(1)
 		cursor.Delete()
 		cursor.Delete()
-		cursor.Insert('a')
-		cursor.Insert('w')
-		fmt.Println(t.Snapshot())
+		cursor.Insert('f')
+		cursor.Insert('o')
+		fmt.Println("modify string:", t.Snapshot())
 	}
-	// Mutate counter after deletion.
+	// Delete elem
 	{
+		cursor := l1.ListCursor()
+		cursor.Index(1)
+		cursor.Delete()
+		fmt.Println("delete elem:", t.Snapshot())
+	}
+	// Delete counter and mutate after deletion.
+	{
+		cnt := ValueAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
 		cnt.Delete()
 		cnt.Increment(27)
-		fmt.Println(t.Snapshot())
+		fmt.Println("delete counter:", t.Snapshot())
 	}
 	// Insert char having deleted character as parent.
 	{
+		s1 := ValueAt(l1.Cursor(), 1).(*Elem).Value().(*String)
 		c1 := s1.StringCursor()
 		c1.Index(2)
 		c1.Insert('-')
@@ -802,16 +815,8 @@ func main() {
 
 		c1.Insert('x')
 		c2.Insert('w')
-		fmt.Println(t.Snapshot())
+		fmt.Println("modify string:", t.Snapshot())
 	}
-	// Insert list
-	l1 := t.NewList()
-	{
-		cursor := l1.ListCursor()
-		cursor.Insert().NewString().StringCursor().Insert('*')
-		cursor.Insert()
-		cursor.Insert().NewCounter().Increment(10)
-		fmt.Println(t.Snapshot())
-	}
+
 	fmt.Println(t.PrintTable())
 }
