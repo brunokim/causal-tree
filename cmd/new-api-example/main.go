@@ -69,14 +69,16 @@ type CausalTree struct {
 	atoms []Atom
 }
 
-func (t *CausalTree) Print() string {
-	var lastID AtomID
+func (t *CausalTree) PrintTable() string {
+	var lastID AtomID = -1
 	var sb strings.Builder
+	fmt.Fprintf(&sb, " cause |   id |      value \n")
+	fmt.Fprintf(&sb, "-------|------|------------\n")
 	for _, atom := range t.atoms {
 		if atom.causeID != lastID {
-			fmt.Fprintf(&sb, "%04d | %04d | %s\n", atom.causeID, atom.id, atom.printValue())
+			fmt.Fprintf(&sb, "  %04d | %04d | %10s\n", atom.causeID, atom.id, atom.printValue())
 		} else {
-			fmt.Fprintf(&sb, "     | %04d | %s\n", atom.id, atom.printValue())
+			fmt.Fprintf(&sb, "       | %04d | %10s\n", atom.id, atom.printValue())
 		}
 		lastID = atom.id
 	}
@@ -101,9 +103,9 @@ func (t *CausalTree) addAtom(causeID AtomID, loc int, tag AtomTag, value int32) 
 	if loc >= 0 && t.atoms[loc].id != causeID {
 		panic(fmt.Errorf("cause loc-ID mismatch: loc=%d id=%d atoms[%d].id=%d", loc, causeID, loc, t.atoms[loc].id))
 	}
+	id := AtomID(len(t.atoms) + 1)
 	t.atoms = append(t.atoms, Atom{})
 	copy(t.atoms[loc+2:], t.atoms[loc+1:])
-	id := AtomID(len(t.atoms) + 1)
 	t.atoms[loc+1] = Atom{id, causeID, tag, value}
 
 	return id, loc + 1
@@ -483,5 +485,11 @@ func main() {
 		cursor.Insert('w')
 		fmt.Println(t.Snapshot())
 	}
-	fmt.Println(t.Print())
+	// Mutate counter after deletion.
+	{
+		cnt.Delete()
+		cnt.Increment(27)
+		fmt.Println(t.Snapshot())
+	}
+	fmt.Println(t.PrintTable())
 }
