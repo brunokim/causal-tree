@@ -670,12 +670,8 @@ func (e *Elem) Value() Value {
 		case deleteTag:
 			// Elem is deleted, but do nothing.
 			j++
-		case stringTag:
-			return &String{e.tree, atom.id, j}
-		case counterTag:
-			return &Counter{e.tree, atom.id, j}
-		case listTag:
-			return &List{e.tree, atom.id, j}
+		case stringTag, counterTag, listTag:
+			return e.tree.valueOf(j)
 		default:
 			panic(fmt.Sprintf("elem: unexpected tag: %v", atom.tag))
 		}
@@ -820,7 +816,7 @@ func main() {
 		cursor.Delete()
 		cursor.Delete()
 		cursor.Insert('f')
-		cursor.Insert('o')
+		cursor.Insert('i')
 		fmt.Println("modify string:", t.Snapshot())
 	}
 	// Delete elem
