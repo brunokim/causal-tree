@@ -55,12 +55,16 @@ func (a Atom) printValue() string {
 		return "\u232b"
 	case charTag:
 		return fmt.Sprintf("char %c", a.value)
+	case elementTag:
+		return "element"
 	case incrementTag:
 		return fmt.Sprintf("inc %d", a.value)
 	case stringTag:
 		return "string"
 	case counterTag:
 		return "counter"
+	case listTag:
+		return "list"
 	}
 	return "(unknown)"
 }
@@ -157,10 +161,77 @@ loop:
 	return j - i, isDeleted
 }
 
+// Returns the size of a single elem block.
+func (t *CausalTree) elemBlock(i int) (int, bool) {
+	j := i + 1
+	isDeleted := false
+loop:
+	for j < len(t.atoms) && t.youngerThan(j, i) {
+		atom := t.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			isDeleted = true
+			j++
+		case stringTag, counterTag, listTag:
+			size := t.causalBlockSize(j)
+			j += size
+			break loop
+		case elementTag:
+			break loop
+		default:
+			panic(fmt.Sprintf("char: unexpected tag: %v", atom.tag))
+		}
+	}
+	return j - i, isDeleted
+}
+
+// Returns the size of a causal block.
+func (t *CausalTree) causalBlockSize(i int) int {
+	j := i + 1
+	for j < len(t.atoms) {
+		if t.atoms[j].causeID < t.atoms[i].id {
+			break
+		}
+		j++
+	}
+	return j - i
+}
+
 func (t *CausalTree) deleteAtom(atomID AtomID, minLoc int) int {
 	loc := t.searchAtom(atomID, minLoc)
 	t.addAtom(atomID, loc, deleteTag, 0)
 	return loc
+}
+
+func (t *CausalTree) findNonDeletedCause(loc int) (AtomID, int) {
+	causeID := t.atoms[loc].causeID
+	isDeleted := false
+	for i := loc - 1; i >= 0; i-- {
+		if causeID == 0 {
+			// Cause is the root atom.
+			loc = -1
+			break
+		}
+		atom := t.atoms[i]
+		if atom.tag == deleteTag && atom.causeID == causeID {
+			// Cause is also deleted.
+			isDeleted = true
+			continue
+		}
+		if atom.id != causeID {
+			continue
+		}
+		if isDeleted {
+			// Found cause, which is deleted. Reset cause to its parent, and keep searching.
+			causeID = atom.causeID
+			isDeleted = false
+			continue
+		}
+		// Found existing cause, set its location.
+		loc = i
+		break
+	}
+	return causeID, loc
 }
 
 // ----
@@ -177,6 +248,15 @@ func (t *CausalTree) NewString() *String {
 func (t *CausalTree) NewCounter() *Counter {
 	id, loc := t.addAtom(0, -1, counterTag, 0)
 	return &Counter{
+		tree:   t,
+		atomID: id,
+		minLoc: loc,
+	}
+}
+
+func (t *CausalTree) NewList() *List {
+	id, loc := t.addAtom(0, -1, listTag, 0)
+	return &List{
 		tree:   t,
 		atomID: id,
 		minLoc: loc,
@@ -230,6 +310,8 @@ func (t *CausalTree) valueOf(i int) Value {
 		return &String{t, atom.id, i}
 	case counterTag:
 		return &Counter{t, atom.id, i}
+	case listTag:
+		return &List{t, atom.id, i}
 	default:
 		panic(fmt.Sprintf("valueOf: unexpected tag: %v", atom.tag))
 	}
@@ -256,6 +338,8 @@ func (t *CausalTree) snapshot(i int) (interface{}, int, bool) {
 		return t.snapshotString(i)
 	case counterTag:
 		return t.snapshotCounter(i)
+	case listTag:
+		return t.snapshotList(i)
 	default:
 		panic(fmt.Sprintf("unexpected tag %d", t.atoms[i].tag))
 	}
@@ -307,6 +391,56 @@ func (t *CausalTree) snapshotCounter(i int) (int32, int, bool) {
 		}
 	}
 	return sum, j - i, isDeleted
+}
+
+func (t *CausalTree) snapshotList(i int) ([]interface{}, int, bool) {
+	var result []interface{}
+	j := i + 1
+	isDeleted := false
+	for j < len(t.atoms) && t.youngerThan(j, i) {
+		atom := t.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			isDeleted = true
+			j++
+		case elementTag:
+			elem, size, elemDeleted := t.snapshotElem(j)
+			if !elemDeleted {
+				result = append(result, elem)
+			}
+			j += size
+		default:
+			panic(fmt.Sprintf("string: unexpected tag: %v", atom.tag))
+		}
+	}
+	return result, j - i, isDeleted
+}
+
+func (t *CausalTree) snapshotElem(i int) (interface{}, int, bool) {
+	var value interface{}
+	j := i + 1
+	isDeleted := false
+loop:
+	for j < len(t.atoms) && t.youngerThan(j, i) {
+		atom := t.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			isDeleted = true
+			j++
+		case stringTag, counterTag, listTag:
+			elem, size, elemDeleted := t.snapshot(j)
+			if !elemDeleted {
+				value = elem
+			}
+			j += size
+			break loop
+		case elementTag:
+			break loop
+		default:
+			panic(fmt.Sprintf("char: unexpected tag: %v", atom.tag))
+		}
+	}
+	return value, j - i, isDeleted
 }
 
 // ----
@@ -407,35 +541,7 @@ func (c *StringCursor) Insert(ch rune) (AtomID, int) {
 
 func (c *StringCursor) Delete() {
 	loc := c.tree.deleteAtom(c.atomID, c.minLoc)
-	causeID := c.tree.atoms[loc].causeID
-	isDeleted := false
-	for i := loc - 1; i >= 0; i-- {
-		if causeID == 0 {
-			// Cause is the root atom.
-			loc = -1
-			break
-		}
-		atom := c.tree.atoms[i]
-		if atom.tag == deleteTag && atom.causeID == causeID {
-			// Cause is also deleted.
-			isDeleted = true
-			continue
-		}
-		if atom.id != causeID {
-			continue
-		}
-		if isDeleted {
-			// Found cause, which is deleted. Reset cause to its parent, and keep searching.
-			causeID = atom.causeID
-			isDeleted = false
-			continue
-		}
-		// Found existing cause, set its location.
-		loc = i
-		break
-	}
-	c.atomID = causeID
-	c.minLoc = loc
+	c.atomID, c.minLoc = c.tree.findNonDeletedCause(loc)
 }
 
 // ----
@@ -458,6 +564,106 @@ func (cnt *Counter) Decrement(x int32) { cnt.increment(-x) }
 func (cnt *Counter) Delete() {
 	loc := cnt.tree.deleteAtom(cnt.atomID, cnt.minLoc)
 	cnt.minLoc = loc
+}
+
+// ----
+
+type List struct {
+	tree   *CausalTree
+	atomID AtomID
+	minLoc int
+}
+
+type Elem struct {
+	tree   *CausalTree
+	atomID AtomID
+	minLoc int
+}
+
+func (l *List) ListCursor() *ListCursor {
+	return &ListCursor{l.tree, l.atomID, l.minLoc}
+}
+
+func (l *List) Cursor() Cursor {
+	return l.ListCursor()
+}
+
+func (l *List) Delete() {
+	loc := l.tree.deleteAtom(l.atomID, l.minLoc)
+	l.minLoc = loc
+}
+
+func (e *Elem) Delete() {
+	loc := e.tree.deleteAtom(e.atomID, e.minLoc)
+	e.minLoc = loc
+}
+
+// ----
+
+type ListCursor struct {
+	tree   *CausalTree
+	atomID AtomID
+	minLoc int
+}
+
+func (c *ListCursor) Index(i int) {
+	if i < 0 {
+		panic("Invalid negative index")
+	}
+	t := c.tree
+	loc := t.searchAtom(c.atomID, c.minLoc)
+	c.minLoc = loc
+
+	cnt := -1
+	j := loc + 1
+	for j < len(t.atoms) && t.youngerThan(j, loc) {
+		atom := t.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			// List is already deleted, but do nothing
+			j++
+		case elementTag:
+			size, isDeleted := t.elemBlock(j)
+			if !isDeleted {
+				cnt++
+				if cnt == i {
+					loc = j
+					break
+				}
+			}
+			j += size
+		default:
+			panic(fmt.Sprintf("list: unexpected tag: %v", atom.tag))
+		}
+	}
+	if cnt < i {
+		panic(fmt.Sprintf("list: index out of range: %d (size=%d)", i, cnt))
+	}
+	c.minLoc = loc
+	c.atomID = t.atoms[loc].id
+}
+
+func (c *ListCursor) Elem() *Elem {
+	loc := c.tree.searchAtom(c.atomID, c.minLoc)
+	c.minLoc = loc
+	return &Elem{c.tree, c.atomID, loc}
+}
+
+func (c *ListCursor) Value() Value {
+	return c.Elem()
+}
+
+func (c *ListCursor) Insert() *Elem {
+	loc := c.tree.searchAtom(c.atomID, c.minLoc)
+	id, charLoc := c.tree.addAtom(c.atomID, loc, elementTag, 0)
+	c.atomID = id
+	c.minLoc = charLoc
+	return &Elem{c.tree, id, charLoc}
+}
+
+func (c *ListCursor) Delete() {
+	loc := c.tree.deleteAtom(c.atomID, c.minLoc)
+	c.atomID, c.minLoc = c.tree.findNonDeletedCause(loc)
 }
 
 // ----
@@ -527,6 +733,15 @@ func main() {
 
 		c1.Insert('x')
 		c2.Insert('w')
+		fmt.Println(t.Snapshot())
+	}
+	// Insert list
+	l1 := t.NewList()
+	{
+		cursor := l1.ListCursor()
+		e1 := cursor.Insert()
+		e2 := cursor.Insert()
+		_, _ = e1, e2
 		fmt.Println(t.Snapshot())
 	}
 	fmt.Println(t.PrintTable())
