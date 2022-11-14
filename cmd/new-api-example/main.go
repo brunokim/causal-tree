@@ -12,11 +12,17 @@ type Container interface {
 type Cursor interface {
     Index(i int)
     Value() Value
-    ValueAt(i int) Value
 }
 
 type Value interface {
     Delete()
+}
+
+// ----
+
+func ValueAt(c Cursor, i int) Value {
+    c.Index(i)
+    return c.Value()
 }
 
 // ----
@@ -179,11 +185,6 @@ func (c *TreeCursor) Value() Value {
     return c.tree.valueOf(loc)
 }
 
-func (c *TreeCursor) ValueAt(i int) Value {
-    c.Index(i)
-    return c.Value()
-}
-
 func (t *CausalTree) valueOf(i int) Value {
     atom := t.atoms[i]
     switch atom.tag {
@@ -334,11 +335,6 @@ func (c *StringCursor) Value() Value {
     return c.Char()
 }
 
-func (c *StringCursor) ValueAt(i int) Value {
-    c.Index(i)
-    return c.Value()
-}
-
 func (c *StringCursor) Insert(ch rune) (AtomID, int) {
     loc := c.tree.searchAtom(c.atomID, c.minLoc)
     id, charLoc := c.tree.addAtom(c.atomID, loc, charTag, int32(ch))
@@ -402,13 +398,13 @@ func main() {
         fmt.Println(t.Snapshot())
     }
     {
-        x1 := t.Cursor().ValueAt(1).(Container)
-        x2 := x1.Cursor().ValueAt(2)
+        x1 := ValueAt(t.Cursor(), 1).(Container)
+        x2 := ValueAt(x1.Cursor(), 2)
         x2.Delete()
         fmt.Println(t.Snapshot())
     }
     {
-        s2 := t.Cursor().ValueAt(0)
+        s2 := ValueAt(t.Cursor(), 0)
         cursor := s2.(*String).StringCursor()
         cursor.Index(1)
         cursor.Delete()
