@@ -162,9 +162,46 @@ func (t *CausalTree) searchPositionFor(tag AtomTag, loc int) int {
 	return len(t.atoms)
 }
 
+func isExpectedTag(tag AtomTag, allowed ...AtomTag) bool {
+	for _, other := range allowed {
+		if tag == other {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *CausalTree) validate(loc int, child AtomTag) bool {
+	if loc < 0 {
+		return isExpectedTag(child, stringTag, counterTag, listTag)
+	}
+	parent := t.atoms[loc].tag
+	switch parent {
+	case deleteTag:
+		return false
+	case charTag:
+		return isExpectedTag(child, deleteTag, charTag)
+	case elementTag:
+		return isExpectedTag(child, deleteTag, elementTag, stringTag, counterTag, listTag)
+	case incrementTag:
+		return false
+	case stringTag:
+		return isExpectedTag(child, deleteTag, charTag)
+	case counterTag:
+		return isExpectedTag(child, deleteTag, incrementTag)
+	case listTag:
+		return isExpectedTag(child, deleteTag, elementTag)
+	default:
+		panic(fmt.Sprintf("unexpected tag %v", parent))
+	}
+}
+
 func (t *CausalTree) addAtom(causeID AtomID, loc int, tag AtomTag, value int32) (AtomID, int) {
 	if loc >= 0 && t.atoms[loc].id != causeID {
 		panic(fmt.Errorf("cause loc-ID mismatch: loc=%d id=%d atoms[%d].id=%d", loc, causeID, loc, t.atoms[loc].id))
+	}
+	if !t.validate(loc, tag) {
+		panic(fmt.Errorf("invalid child: loc=%d, tag=%v", loc, tag))
 	}
 	pos := t.searchPositionFor(tag, loc)
 	id := AtomID(len(t.atoms) + 1)
