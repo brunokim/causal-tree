@@ -39,6 +39,37 @@ const (
 	listTag
 )
 
+func (tag AtomTag) String() string {
+	switch tag {
+	case deleteTag:
+		return "delete"
+	case charTag:
+		return "char"
+	case elementTag:
+		return "element"
+	case incrementTag:
+		return "increment"
+	case stringTag:
+		return "string"
+	case counterTag:
+		return "counter"
+	case listTag:
+		return "list"
+	}
+	return fmt.Sprintf("AtomTag(%d)", tag)
+}
+
+func priority(tag AtomTag) int {
+	switch tag {
+	case deleteTag:
+		return -1
+	case elementTag:
+		return +1
+	default:
+		return 0
+	}
+}
+
 type AtomID int32
 
 type Atom struct {
@@ -116,7 +147,7 @@ func (t *CausalTree) searchPositionFor(tag AtomTag, loc int) int {
 		}
 		if t.atoms[i].causeID == t.atoms[loc].id {
 			// Sibling atom, sort by tag.
-			if t.atoms[i].tag >= tag {
+			if priority(t.atoms[i].tag) >= priority(tag) {
 				return i
 			}
 		}
@@ -137,8 +168,8 @@ func (t *CausalTree) addAtom(causeID AtomID, loc int, tag AtomTag, value int32) 
 	return id, pos
 }
 
-func (t *CausalTree) youngerThan(i, j int) bool {
-	return t.atoms[i].id > t.atoms[j].id
+func (t *CausalTree) withinBlock(j, i int) bool {
+	return t.atoms[j].causeID >= t.atoms[i].id
 }
 
 // Returns the size of a single char block.
@@ -146,7 +177,7 @@ func (t *CausalTree) charBlock(i int) (int, bool) {
 	j := i + 1
 	isDeleted := false
 loop:
-	for j < len(t.atoms) && t.youngerThan(j, i) {
+	for j < len(t.atoms) && t.withinBlock(j, i) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -155,7 +186,8 @@ loop:
 		case charTag:
 			break loop
 		default:
-			panic(fmt.Sprintf("char: unexpected tag: %v", atom.tag))
+			fmt.Println(t.PrintTable())
+			panic(fmt.Sprintf("char @ %d: unexpected tag @ %d: %v", i, j, atom.tag))
 		}
 	}
 	return j - i, isDeleted
@@ -166,7 +198,7 @@ func (t *CausalTree) elemBlock(i int) (int, bool) {
 	j := i + 1
 	isDeleted := false
 loop:
-	for j < len(t.atoms) && t.youngerThan(j, i) {
+	for j < len(t.atoms) && t.withinBlock(j, i) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -179,7 +211,8 @@ loop:
 		case elementTag:
 			break loop
 		default:
-			panic(fmt.Sprintf("char: unexpected tag: %v", atom.tag))
+			fmt.Println(t.PrintTable())
+			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", i, j, atom.tag))
 		}
 	}
 	return j - i, isDeleted
@@ -333,7 +366,8 @@ func (t *CausalTree) Snapshot() []interface{} {
 }
 
 func (t *CausalTree) snapshot(i int) (interface{}, int, bool) {
-	switch t.atoms[i].tag {
+	atom := t.atoms[i]
+	switch atom.tag {
 	case stringTag:
 		return t.snapshotString(i)
 	case counterTag:
@@ -341,7 +375,8 @@ func (t *CausalTree) snapshot(i int) (interface{}, int, bool) {
 	case listTag:
 		return t.snapshotList(i)
 	default:
-		panic(fmt.Sprintf("unexpected tag %d", t.atoms[i].tag))
+		fmt.Println(t.PrintTable())
+		panic(fmt.Sprintf("snapshot @ %d: unexpected tag: %v", i, atom.tag))
 	}
 }
 
@@ -349,7 +384,7 @@ func (t *CausalTree) snapshotString(i int) (string, int, bool) {
 	var sb strings.Builder
 	j := i + 1
 	isDeleted := false
-	for j < len(t.atoms) && t.youngerThan(j, i) {
+	for j < len(t.atoms) && t.withinBlock(j, i) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -362,7 +397,8 @@ func (t *CausalTree) snapshotString(i int) (string, int, bool) {
 			}
 			j += size
 		default:
-			panic(fmt.Sprintf("string: unexpected tag: %v", atom.tag))
+			fmt.Println(t.PrintTable())
+			panic(fmt.Sprintf("string @ %d: unexpected tag @ %d: %v", i, j, atom.tag))
 		}
 	}
 	return sb.String(), j - i, isDeleted
@@ -377,7 +413,7 @@ func (t *CausalTree) snapshotCounter(i int) (int32, int, bool) {
 	var sum int32
 	j := i + 1
 	isDeleted := false
-	for j < len(t.atoms) && t.youngerThan(j, i) {
+	for j < len(t.atoms) && t.withinBlock(j, i) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -387,7 +423,8 @@ func (t *CausalTree) snapshotCounter(i int) (int32, int, bool) {
 			sum += atom.value
 			j++
 		default:
-			panic(fmt.Sprintf("counter: unexpected tag: %v", atom.tag))
+			fmt.Println(t.PrintTable())
+			panic(fmt.Sprintf("counter @ %d: unexpected tag @ %d: %v", i, j, atom.tag))
 		}
 	}
 	return sum, j - i, isDeleted
@@ -397,7 +434,7 @@ func (t *CausalTree) snapshotList(i int) ([]interface{}, int, bool) {
 	var result []interface{}
 	j := i + 1
 	isDeleted := false
-	for j < len(t.atoms) && t.youngerThan(j, i) {
+	for j < len(t.atoms) && t.withinBlock(j, i) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -410,7 +447,8 @@ func (t *CausalTree) snapshotList(i int) ([]interface{}, int, bool) {
 			}
 			j += size
 		default:
-			panic(fmt.Sprintf("string: unexpected tag: %v", atom.tag))
+			fmt.Println(t.PrintTable())
+			panic(fmt.Sprintf("list @ %d: unexpected tag @ %d: %v", i, j, atom.tag))
 		}
 	}
 	return result, j - i, isDeleted
@@ -421,7 +459,7 @@ func (t *CausalTree) snapshotElem(i int) (interface{}, int, bool) {
 	j := i + 1
 	isDeleted := false
 loop:
-	for j < len(t.atoms) && t.youngerThan(j, i) {
+	for j < len(t.atoms) && t.withinBlock(j, i) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -437,7 +475,8 @@ loop:
 		case elementTag:
 			break loop
 		default:
-			panic(fmt.Sprintf("char: unexpected tag: %v", atom.tag))
+			fmt.Println(t.PrintTable())
+			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", i, j, atom.tag))
 		}
 	}
 	return value, j - i, isDeleted
@@ -494,7 +533,7 @@ func (c *StringCursor) Index(i int) {
 
 	cnt := -1
 	j := loc + 1
-	for j < len(t.atoms) && t.youngerThan(j, loc) {
+	for j < len(t.atoms) && t.withinBlock(j, loc) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -598,6 +637,36 @@ func (e *Elem) Delete() {
 	e.minLoc = loc
 }
 
+func (e *Elem) NewString() *String {
+	loc := e.tree.searchAtom(e.atomID, e.minLoc)
+	id, loc := e.tree.addAtom(e.atomID, loc, stringTag, 0)
+	return &String{
+		tree:   e.tree,
+		atomID: id,
+		minLoc: loc,
+	}
+}
+
+func (e *Elem) NewCounter() *Counter {
+	loc := e.tree.searchAtom(e.atomID, e.minLoc)
+	id, loc := e.tree.addAtom(e.atomID, loc, counterTag, 0)
+	return &Counter{
+		tree:   e.tree,
+		atomID: id,
+		minLoc: loc,
+	}
+}
+
+func (e *Elem) NewList() *List {
+	loc := e.tree.searchAtom(e.atomID, e.minLoc)
+	id, loc := e.tree.addAtom(e.atomID, loc, listTag, 0)
+	return &List{
+		tree:   e.tree,
+		atomID: id,
+		minLoc: loc,
+	}
+}
+
 // ----
 
 type ListCursor struct {
@@ -616,7 +685,7 @@ func (c *ListCursor) Index(i int) {
 
 	cnt := -1
 	j := loc + 1
-	for j < len(t.atoms) && t.youngerThan(j, loc) {
+	for j < len(t.atoms) && t.withinBlock(j, loc) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -739,9 +808,9 @@ func main() {
 	l1 := t.NewList()
 	{
 		cursor := l1.ListCursor()
-		e1 := cursor.Insert()
-		e2 := cursor.Insert()
-		_, _ = e1, e2
+		cursor.Insert().NewString().StringCursor().Insert('*')
+		cursor.Insert()
+		cursor.Insert().NewCounter().Increment(10)
 		fmt.Println(t.Snapshot())
 	}
 	fmt.Println(t.PrintTable())
