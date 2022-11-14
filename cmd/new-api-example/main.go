@@ -87,6 +87,7 @@ func (t *CausalTree) PrintTable() string {
 
 // ----
 
+// Search for an atom given by 'id' and last seen at 'minLoc'
 func (t *CausalTree) searchAtom(id AtomID, minLoc int) int {
 	if id == 0 {
 		return -1
@@ -99,16 +100,37 @@ func (t *CausalTree) searchAtom(id AtomID, minLoc int) int {
 	return -1
 }
 
+// Search for an insertion position for the given 'tag', with parent at 'loc'.
+func (t *CausalTree) searchPositionFor(tag AtomTag, loc int) int {
+	if loc < 0 {
+		return 0
+	}
+	for i := loc + 1; i < len(t.atoms); i++ {
+		if t.atoms[i].causeID < t.atoms[loc].id {
+			// End of causal block.
+			return i
+		}
+		if t.atoms[i].causeID == t.atoms[loc].id {
+			// Sibling atom, sort by tag.
+			if t.atoms[i].tag >= tag {
+				return i
+			}
+		}
+	}
+	return len(t.atoms)
+}
+
 func (t *CausalTree) addAtom(causeID AtomID, loc int, tag AtomTag, value int32) (AtomID, int) {
 	if loc >= 0 && t.atoms[loc].id != causeID {
 		panic(fmt.Errorf("cause loc-ID mismatch: loc=%d id=%d atoms[%d].id=%d", loc, causeID, loc, t.atoms[loc].id))
 	}
+	pos := t.searchPositionFor(tag, loc)
 	id := AtomID(len(t.atoms) + 1)
 	t.atoms = append(t.atoms, Atom{})
-	copy(t.atoms[loc+2:], t.atoms[loc+1:])
-	t.atoms[loc+1] = Atom{id, causeID, tag, value}
+	copy(t.atoms[pos+1:], t.atoms[pos:])
+	t.atoms[pos] = Atom{id, causeID, tag, value}
 
-	return id, loc + 1
+	return id, pos
 }
 
 func (t *CausalTree) youngerThan(i, j int) bool {
@@ -489,6 +511,22 @@ func main() {
 	{
 		cnt.Delete()
 		cnt.Increment(27)
+		fmt.Println(t.Snapshot())
+	}
+	// Insert char having deleted character as parent.
+	{
+		c1 := s1.StringCursor()
+		c1.Index(2)
+		c1.Insert('-')
+		c1.Insert('z')
+		c1.Insert('y')
+
+		c2 := s1.StringCursor()
+		c2.Index(5)
+		c2.Delete()
+
+		c1.Insert('x')
+		c2.Insert('w')
 		fmt.Println(t.Snapshot())
 	}
 	fmt.Println(t.PrintTable())
