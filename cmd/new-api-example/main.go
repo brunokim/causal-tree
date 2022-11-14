@@ -54,8 +54,12 @@ func (a Atom) printValue() string {
         return "\u232b"
     case charTag:
         return fmt.Sprintf("char %c", a.value)
+    case incrementTag:
+        return fmt.Sprintf("inc %d", a.value)
     case stringTag:
         return "string"
+    case counterTag:
+        return "counter"
     }
     return "(unknown)"
 }
@@ -145,6 +149,15 @@ func (t *CausalTree) NewString() *String {
     }
 }
 
+func (t *CausalTree) NewCounter() *Counter {
+    id, loc := t.addAtom(0, -1, counterTag, 0)
+    return &Counter{
+        tree: t,
+        atomID: id,
+        minLoc: loc,
+    }
+}
+
 type TreeCursor struct {
     tree *CausalTree
     atomID AtomID
@@ -190,6 +203,8 @@ func (t *CausalTree) valueOf(i int) Value {
     switch atom.tag {
     case stringTag:
         return &String{t, atom.id, i}
+    case counterTag:
+        return &Counter{t, atom.id, i}
     default:
         panic(fmt.Sprintf("valueOf: unexpected tag: %v", atom.tag))
     }
@@ -214,6 +229,8 @@ func (t *CausalTree) snapshot(i int) (interface{}, int, bool) {
     switch t.atoms[i].tag {
     case stringTag:
         return t.snapshotString(i)
+    case counterTag:
+        return t.snapshotCounter(i)
     default:
         panic(fmt.Sprintf("unexpected tag %d", t.atoms[i].tag))
     }
@@ -245,6 +262,26 @@ func (t *CausalTree) snapshotString(i int) (string, int, bool) {
 func (t *CausalTree) snapshotChar(i int) (rune, int, bool) {
     size, isDeleted := t.charBlock(i)
     return rune(t.atoms[i].value), size, isDeleted
+}
+
+func (t *CausalTree) snapshotCounter(i int) (int32, int, bool) {
+    var sum int32
+    j := i + 1
+    isDeleted := false
+    for j < len(t.atoms) && t.youngerThan(j, i) {
+        atom := t.atoms[j]
+        switch atom.tag {
+        case deleteTag:
+            isDeleted = true
+            j++
+        case incrementTag:
+            sum += atom.value
+            j++
+        default:
+            panic(fmt.Sprintf("counter: unexpected tag: %v", atom.tag))
+        }
+    }
+    return sum, j - i, isDeleted
 }
 
 // ----
@@ -378,10 +415,33 @@ func (c *StringCursor) Delete() {
 
 // ----
 
+type Counter struct {
+    tree *CausalTree
+    atomID AtomID
+    minLoc int
+}
+
+func (cnt *Counter) increment(x int32) {
+    loc := cnt.tree.searchAtom(cnt.atomID, cnt.minLoc)
+    cnt.minLoc = loc
+    cnt.tree.addAtom(cnt.atomID, loc, incrementTag, x)
+}
+
+func (cnt *Counter) Increment(x int32) { cnt.increment(+x) }
+func (cnt *Counter) Decrement(x int32) { cnt.increment(-x) }
+
+func (cnt *Counter) Delete() {
+    loc := cnt.tree.deleteAtom(cnt.atomID, cnt.minLoc)
+    cnt.minLoc = loc
+}
+
+// ----
+
 func main() {
     t := new(CausalTree)
+    // 
+    s1 := t.NewString()
     {
-        s1 := t.NewString()
         cursor := s1.StringCursor()
         cursor.Insert('c')
         cursor.Insert('r')
@@ -389,23 +449,32 @@ func main() {
         cursor.Insert('t')
         fmt.Println(t.Snapshot())
     }
+    // 
+    s2 := t.NewString()
     {
-        s2 := t.NewString()
         cursor := s2.StringCursor()
         cursor.Insert('w')
         cursor.Insert('o')
         cursor.Insert('w')
         fmt.Println(t.Snapshot())
     }
+    // Abstract walk, must know insertion order.
     {
         x1 := ValueAt(t.Cursor(), 1).(Container)
         x2 := ValueAt(x1.Cursor(), 2)
         x2.Delete()
         fmt.Println(t.Snapshot())
     }
+    // Insert a counter
+    cnt := t.NewCounter()
     {
-        s2 := ValueAt(t.Cursor(), 0)
-        cursor := s2.(*String).StringCursor()
+        cnt.Increment(45)
+        cnt.Decrement(3)
+        fmt.Println(t.Snapshot())
+    }
+    // Modify a string after it was pushed to the right by the previous insertion.
+    {
+        cursor := s2.StringCursor()
         cursor.Index(1)
         cursor.Delete()
         cursor.Delete()
