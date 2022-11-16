@@ -498,7 +498,6 @@ type Char struct {
 	tree   *CausalTree
 	atomID AtomID
 	minLoc int
-	value  rune
 }
 
 func (s *String) StringCursor() *StringCursor {
@@ -567,7 +566,7 @@ func (c *StringCursor) Index(i int) {
 func (c *StringCursor) Char() *Char {
 	loc := c.tree.searchAtom(c.atomID, c.minLoc)
 	c.minLoc = loc
-	return &Char{c.tree, c.atomID, loc, rune(c.tree.atoms[loc].value)}
+	return &Char{c.tree, c.atomID, loc}
 }
 
 func (c *StringCursor) Value() Value {
