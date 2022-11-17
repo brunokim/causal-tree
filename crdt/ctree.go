@@ -22,6 +22,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -870,6 +871,17 @@ func (t *CausalTree) SetCursor(i int) error {
 	return nil
 }
 
+// +--------------------------------------+
+// + Operations - Atom Priority constants |
+// +--------------------------------------+
+const (
+	InsertCharPriority    = 0
+	InsertStrPriority     = 30
+	DeletePriority        = 100
+	InsertCounterPriority = 30
+	InsertAddPriority     = 30
+)
+
 // +--------------------------+
 // | Operations - Insert char |
 // +--------------------------+
@@ -880,7 +892,7 @@ type InsertChar struct {
 	Char rune
 }
 
-func (v InsertChar) AtomPriority() int { return 0 }
+func (v InsertChar) AtomPriority() int { return InsertCharPriority }
 func (v InsertChar) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fmt.Sprintf("insert %c", v.Char))
 }
@@ -920,7 +932,7 @@ func (t *CausalTree) InsertCharAt(ch rune, i int) error {
 // Delete represents deleting an element from the tree.
 type Delete struct{}
 
-func (v Delete) AtomPriority() int { return 100 }
+func (v Delete) AtomPriority() int { return DeletePriority }
 func (v Delete) MarshalJSON() ([]byte, error) {
 	return []byte(`"delete"`), nil
 }
@@ -957,7 +969,7 @@ func (t *CausalTree) DeleteCharAt(i int) error {
 //Inserts a string container as a child of the root atom.
 type InsertStr struct{}
 
-func (v InsertStr) AtomPriority() int { return 30 }
+func (v InsertStr) AtomPriority() int { return InsertStrPriority }
 func (v InsertStr) MarshalJSON() ([]byte, error) {
 	return json.Marshal("insert str container")
 }
@@ -973,10 +985,86 @@ func (v InsertStr) ValidateChild(child AtomValue) error {
 	}
 }
 
-// InsertStr inserts a Str container after the cursor position and advances the cursor.
+// InsertStr inserts a Str container after the root and advances the cursor.
 func (t *CausalTree) InsertStr() error {
 	t.Cursor = AtomID{}
 	atomID, err := t.addAtom(InsertStr{})
+	t.Cursor = atomID
+	return err
+}
+
+// +------------------------------+
+// | Operations - Insert Add atom |
+// +------------------------------+
+
+//Inserts an add atom as a child of the atom pointed by cursor.
+type InsertAdd struct {
+	//Value inserted into the counter container
+	Value int32
+}
+
+func (v InsertAdd) AtomPriority() int { return InsertAddPriority }
+func (v InsertAdd) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fmt.Sprintf("insert %d", v.Value))
+}
+
+func (v InsertAdd) String() string { return strconv.FormatInt(int64(v.Value), 10) }
+
+//InsertAdd atoms only accept child of type InsertAdd.
+func (v InsertAdd) ValidateChild(child AtomValue) error {
+	switch child.(type) {
+	case InsertAdd:
+		return nil
+	default:
+		return fmt.Errorf("invalid atom value after InsertAdd: %T (%v)", child, child)
+	}
+}
+
+// InsertAdd inserts an InsertAdd atom after the cursor position and advances the cursor.
+func (t *CausalTree) InsertAdd(val int32) error {
+	atomID, err := t.addAtom(InsertAdd{val})
+	if err != nil {
+		return err
+	}
+	t.Cursor = atomID
+	return nil
+}
+
+// InsertAddAt inserts an InsertAdd atom after the given (tree) position.
+func (t *CausalTree) InsertAddAt(val int32, i int) error {
+	if err := t.SetCursor(i); err != nil {
+		return err
+	}
+	return t.InsertAdd(val)
+}
+
+// +---------------------------------------+
+// | Operations - Insert counter container |
+// +---------------------------------------+
+
+//Inserts a counter container as a child of the root atom.
+type InsertCounter struct{}
+
+func (v InsertCounter) AtomPriority() int { return InsertCounterPriority }
+func (v InsertCounter) MarshalJSON() ([]byte, error) {
+	return json.Marshal("insert counter container")
+}
+
+func (v InsertCounter) String() string { return "Counter: " }
+
+func (v InsertCounter) ValidateChild(child AtomValue) error {
+	switch child.(type) {
+	case InsertAdd, Delete:
+		return nil
+	default:
+		return fmt.Errorf("invalid atom value after InsertCounter: %T (%v)", child, child)
+	}
+}
+
+// InsertCounter inserts a Counter container after the root and advances the cursor.
+func (t *CausalTree) InsertCounter() error {
+	t.Cursor = AtomID{}
+	atomID, err := t.addAtom(InsertCounter{})
 	t.Cursor = atomID
 	return err
 }
