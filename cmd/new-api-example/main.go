@@ -5,31 +5,75 @@ import (
 	"strings"
 )
 
+// Register contains a single value or none at all.
 type Register interface {
+	// SetString sets the register to an empty string.
 	SetString() *String
+	// SetString sets the register to a zeroed counter.
 	SetCounter() *Counter
+	// SetString sets the register to an empty list.
 	SetList() *List
+	// Clear resets the register to an empty state.
+	Clear()
+	// Value returns the underlying value.
 	Value() Value
 }
 
+// Container represents a collection of values.
 type Container interface {
+	// Cursor returns the container's cursor initialized to its starting position.
 	Cursor() Cursor
 }
 
+// Cursor represents a pointer to a container's element.
+// Concrete cursors have an Insert() method with appropriate parameters and return type.
+// Concrete cursors have a Element() method with appropriate return type.
 type Cursor interface {
+	// Len moves the cursor to the last element and returns the number of elements.
+	//Len() int
+
+	// Index moves the cursor to the i-th element. It panics if i is out of bounds.
 	Index(i int)
-	Value() Value
+	// Delete removes the pointed element from the collection. The cursor is moved to the
+	// previous element, or the container's head.
+	Delete()
 }
 
+// Value represents a structure that may be converted to concrete data.
+// Each one has a method "Snapshot()" with appropriate return type.
 type Value interface {
-	Delete()
+	isValue()
 }
 
 // ----
 
-func ValueAt(c Cursor, i int) Value {
+func Snapshot(value Value) interface{} {
+	switch v := value.(type) {
+	case *String:
+		return v.Snapshot()
+	case *Counter:
+		return v.Snapshot()
+	case *List:
+		return v.Snapshot()
+	default:
+		panic(fmt.Sprintf("unknown value %T", value))
+	}
+}
+
+func Element(cursor Cursor) interface{} {
+	switch c := cursor.(type) {
+	case *StringCursor:
+		return c.Element()
+	case *ListCursor:
+		return c.Element()
+	default:
+		panic(fmt.Sprintf("unknown cursor %T", cursor))
+	}
+}
+
+func ElementAt(c Cursor, i int) interface{} {
 	c.Index(i)
-	return c.Value()
+	return Element(c)
 }
 
 // ----
@@ -110,6 +154,8 @@ func (a Atom) printValue() string {
 type CausalTree struct {
 	atoms []Atom
 }
+
+func (*CausalTree) isValue() {}
 
 func (t *CausalTree) PrintTable() string {
 	var lastID AtomID = -1
@@ -340,10 +386,12 @@ func (t *CausalTree) newList(atomID AtomID, loc int) *List {
 	}
 }
 
+// CausalTree implements Register
 func (t *CausalTree) SetString() *String   { return t.newString(0, -1) }
 func (t *CausalTree) SetCounter() *Counter { return t.newCounter(0, -1) }
 func (t *CausalTree) SetList() *List       { return t.newList(0, -1) }
 func (t *CausalTree) Value() Value         { return t.valueOf(0) }
+func (t *CausalTree) Clear()               { t.deleteAtom(0, -1) }
 
 func (t *CausalTree) valueOf(i int) Value {
 	atom := t.atoms[i]
@@ -494,10 +542,18 @@ type String struct {
 	minLoc int
 }
 
+func (*String) isValue() {}
+
 type Char struct {
 	tree   *CausalTree
 	atomID AtomID
 	minLoc int
+}
+
+func (s *String) Snapshot() string {
+	loc := s.tree.searchAtom(s.atomID, s.minLoc)
+	str, _, _ := s.tree.snapshotString(loc)
+	return str
 }
 
 func (s *String) StringCursor() *StringCursor {
@@ -506,16 +562,6 @@ func (s *String) StringCursor() *StringCursor {
 
 func (s *String) Cursor() Cursor {
 	return s.StringCursor()
-}
-
-func (s *String) Delete() {
-	loc := s.tree.deleteAtom(s.atomID, s.minLoc)
-	s.minLoc = loc
-}
-
-func (ch *Char) Delete() {
-	loc := ch.tree.deleteAtom(ch.atomID, ch.minLoc)
-	ch.minLoc = loc
 }
 
 // ----
@@ -563,14 +609,10 @@ func (c *StringCursor) Index(i int) {
 	c.atomID = t.atoms[loc].id
 }
 
-func (c *StringCursor) Char() *Char {
+func (c *StringCursor) Element() *Char {
 	loc := c.tree.searchAtom(c.atomID, c.minLoc)
 	c.minLoc = loc
 	return &Char{c.tree, c.atomID, loc}
-}
-
-func (c *StringCursor) Value() Value {
-	return c.Char()
 }
 
 func (c *StringCursor) Insert(ch rune) (AtomID, int) {
@@ -594,6 +636,8 @@ type Counter struct {
 	minLoc int
 }
 
+func (*Counter) isValue() {}
+
 func (cnt *Counter) increment(x int32) {
 	loc := cnt.tree.searchAtom(cnt.atomID, cnt.minLoc)
 	cnt.minLoc = loc
@@ -608,6 +652,12 @@ func (cnt *Counter) Delete() {
 	cnt.minLoc = loc
 }
 
+func (cnt *Counter) Snapshot() int32 {
+	loc := cnt.tree.searchAtom(cnt.atomID, cnt.minLoc)
+	x, _, _ := cnt.tree.snapshotCounter(loc)
+	return x
+}
+
 // ----
 
 type List struct {
@@ -615,6 +665,8 @@ type List struct {
 	atomID AtomID
 	minLoc int
 }
+
+func (*List) isValue() {}
 
 type Elem struct {
 	tree   *CausalTree
@@ -635,7 +687,13 @@ func (l *List) Delete() {
 	l.minLoc = loc
 }
 
-func (e *Elem) Delete() {
+func (l *List) Snapshot() []interface{} {
+	loc := l.tree.searchAtom(l.atomID, l.minLoc)
+	xs, _, _ := l.tree.snapshotList(loc)
+	return xs
+}
+
+func (e *Elem) Clear() {
 	loc := e.tree.deleteAtom(e.atomID, e.minLoc)
 	e.minLoc = loc
 }
@@ -724,14 +782,10 @@ func (c *ListCursor) Index(i int) {
 	c.atomID = t.atoms[loc].id
 }
 
-func (c *ListCursor) Elem() *Elem {
+func (c *ListCursor) Element() *Elem {
 	loc := c.tree.searchAtom(c.atomID, c.minLoc)
 	c.minLoc = loc
 	return &Elem{c.tree, c.atomID, loc}
-}
-
-func (c *ListCursor) Value() Value {
-	return c.Elem()
 }
 
 func (c *ListCursor) Insert() *Elem {
@@ -750,6 +804,32 @@ func (c *ListCursor) Delete() {
 // ----
 
 func main() {
+	// Check expected types
+	{
+		var t *CausalTree
+		_ = Register(t)
+		_ = Value(t)
+
+		var s *String
+		_ = Container(s)
+		_ = Value(s)
+
+		var scur *StringCursor
+		_ = Cursor(scur)
+
+		var cnt *Counter
+		_ = Value(cnt)
+
+		var l *List
+		_ = Container(l)
+		_ = Value(l)
+
+		var lcur *ListCursor
+		_ = Cursor(lcur)
+
+		var elem *Elem
+		_ = Register(elem)
+	}
 	t := new(CausalTree)
 	//
 	{
@@ -773,8 +853,9 @@ func main() {
 	// Abstract walk, must know insertion order.
 	{
 		x1 := t.Value().(Container)
-		x2 := ValueAt(x1.Cursor(), 2)
-		x2.Delete()
+		cur := x1.Cursor()
+		cur.Index(2)
+		cur.Delete()
 		fmt.Println("delete $.2:", t.Snapshot())
 	}
 	// Insert a counter
@@ -802,14 +883,14 @@ func main() {
 	}
 	// Modify embedded counter
 	{
-		cnt := ValueAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
+		cnt := ElementAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
 		cnt.Increment(40)
 		cnt.Decrement(8)
 		fmt.Println("modify counter:", t.Snapshot())
 	}
 	// Modify a string after it was pushed to the right by the previous insertion.
 	{
-		s2 := ValueAt(l1.Cursor(), 2).(*Elem).Value().(*String)
+		s2 := ElementAt(l1.Cursor(), 2).(*Elem).Value().(*String)
 		cursor := s2.StringCursor()
 		cursor.Index(1)
 		cursor.Delete()
@@ -827,14 +908,14 @@ func main() {
 	}
 	// Delete counter and mutate after deletion.
 	{
-		cnt := ValueAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
+		cnt := ElementAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
 		cnt.Delete()
 		cnt.Increment(27)
 		fmt.Println("delete counter:", t.Snapshot())
 	}
 	// Insert char having deleted character as parent.
 	{
-		s1 := ValueAt(l1.Cursor(), 1).(*Elem).Value().(*String)
+		s1 := ElementAt(l1.Cursor(), 1).(*Elem).Value().(*String)
 		c1 := s1.StringCursor()
 		c1.Index(2)
 		c1.Insert('-')
