@@ -647,11 +647,6 @@ func (cnt *Counter) increment(x int32) {
 func (cnt *Counter) Increment(x int32) { cnt.increment(+x) }
 func (cnt *Counter) Decrement(x int32) { cnt.increment(-x) }
 
-func (cnt *Counter) Delete() {
-	loc := cnt.tree.deleteAtom(cnt.atomID, cnt.minLoc)
-	cnt.minLoc = loc
-}
-
 func (cnt *Counter) Snapshot() int32 {
 	loc := cnt.tree.searchAtom(cnt.atomID, cnt.minLoc)
 	x, _, _ := cnt.tree.snapshotCounter(loc)
@@ -682,11 +677,6 @@ func (l *List) Cursor() Cursor {
 	return l.ListCursor()
 }
 
-func (l *List) Delete() {
-	loc := l.tree.deleteAtom(l.atomID, l.minLoc)
-	l.minLoc = loc
-}
-
 func (l *List) Snapshot() []interface{} {
 	loc := l.tree.searchAtom(l.atomID, l.minLoc)
 	xs, _, _ := l.tree.snapshotList(loc)
@@ -694,8 +684,25 @@ func (l *List) Snapshot() []interface{} {
 }
 
 func (e *Elem) Clear() {
-	loc := e.tree.deleteAtom(e.atomID, e.minLoc)
+	loc := e.tree.searchAtom(e.atomID, e.minLoc)
 	e.minLoc = loc
+
+	j := loc + 1
+	for j < len(e.tree.atoms) && e.tree.withinBlock(j, loc) {
+		atom := e.tree.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			// Elem is deleted, but do nothing.
+			j++
+		case stringTag, counterTag, listTag:
+			// Delete contents of elem.
+			e.tree.deleteAtom(atom.id, j)
+			return
+		default:
+			fmt.Println(e.tree.PrintTable())
+			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", loc, j, atom.tag))
+		}
+	}
 }
 
 func (e *Elem) SetString() *String {
@@ -730,7 +737,8 @@ func (e *Elem) Value() Value {
 		case stringTag, counterTag, listTag:
 			return e.tree.valueOf(j)
 		default:
-			panic(fmt.Sprintf("elem: unexpected tag: %v", atom.tag))
+			fmt.Println(e.tree.PrintTable())
+			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", loc, j, atom.tag))
 		}
 	}
 	// Empty elem.
@@ -908,8 +916,11 @@ func main() {
 	}
 	// Delete counter and mutate after deletion.
 	{
-		cnt := ElementAt(l1.Cursor(), 0).(*Elem).Value().(*Counter)
-		cnt.Delete()
+		cursor := l1.ListCursor()
+		cursor.Index(0)
+		elem := cursor.Element()
+		cnt := elem.Value().(*Counter)
+		elem.Clear()
 		cnt.Increment(27)
 		fmt.Println("delete counter:", t.Snapshot())
 	}
