@@ -1,3 +1,4 @@
+// Exercising a new API for the main Causal Tree implementation.
 package crdt
 
 import (
@@ -21,32 +22,37 @@ type Register interface {
 
 // Container represents a collection of values.
 type Container interface {
-	// Cursor returns the container's cursor initialized to its starting position.
+	// Cursor returns the container's cursor initialized to its head position (index=-1).
 	Cursor() Cursor
 }
 
-// Cursor represents a pointer to a container's element.
-// Concrete cursors have an Insert() method with appropriate parameters and return type.
-// Concrete cursors have a Element() method with appropriate return type.
+// Cursor represents a pointer to a container's element, or the container's head.
+// Concrete cursors have additional methods with type-specific parameters and return type:
+//
+// - Insert() inserts a new element after the current position.
+//
+// - Element() returns the pointed element. It panics if the cursor is pointing to the container's head.
 type Cursor interface {
 	// Len moves the cursor to the last element and returns the number of elements.
 	//Len() int
 
-	// Index moves the cursor to the i-th element. It panics if i is out of bounds.
+	// Index moves the cursor to the i-th element (container's head=-1). It panics if i is out of bounds.
 	Index(i int)
 	// Delete removes the pointed element from the collection. The cursor is moved to the
-	// previous element, or the container's head.
+	// previous element, or the container's head. It panics if the cursor is pointing to the container's
+	// head.
 	Delete()
 }
 
 // Value represents a structure that may be converted to concrete data.
-// Each one has a method "Snapshot()" with appropriate return type.
+// Concrete Values have a Snapshot() method that return the value's Go representation.
 type Value interface {
 	isValue()
 }
 
 // ----
 
+// Snapshot returns the Value's Go representation.
 func Snapshot(value Value) interface{} {
 	switch v := value.(type) {
 	case *String:
@@ -60,6 +66,7 @@ func Snapshot(value Value) interface{} {
 	}
 }
 
+// Element returns the Cursor's pointed element.
 func Element(cursor Cursor) interface{} {
 	switch c := cursor.(type) {
 	case *StringCursor:
@@ -71,6 +78,7 @@ func Element(cursor Cursor) interface{} {
 	}
 }
 
+// ElementAt moves the cursor to the i-th position and returns the element there.
 func ElementAt(c Cursor, i int) interface{} {
 	c.Index(i)
 	return Element(c)
@@ -78,10 +86,10 @@ func ElementAt(c Cursor, i int) interface{} {
 
 // ----
 
-type AtomTag int
+type atomTag int
 
 const (
-	deleteTag AtomTag = iota
+	deleteTag atomTag = iota
 	charTag
 	elementTag
 	incrementTag
@@ -90,7 +98,7 @@ const (
 	listTag
 )
 
-func (tag AtomTag) String() string {
+func (tag atomTag) String() string {
 	switch tag {
 	case deleteTag:
 		return "delete"
@@ -107,10 +115,10 @@ func (tag AtomTag) String() string {
 	case listTag:
 		return "list"
 	}
-	return fmt.Sprintf("AtomTag(%d)", tag)
+	return fmt.Sprintf("atomTag(%d)", tag)
 }
 
-func priority(tag AtomTag) int {
+func priority(tag atomTag) int {
 	switch tag {
 	case deleteTag:
 		return -1
@@ -121,13 +129,13 @@ func priority(tag AtomTag) int {
 	}
 }
 
-type AtomID int32
+type atomID int32
 
 type Atom struct {
-	id      AtomID
-	causeID AtomID
+	id      atomID
+	causeID atomID
 
-	tag   AtomTag
+	tag   atomTag
 	value int32 // rune for Char, increment for Increment
 }
 
@@ -151,14 +159,16 @@ func (a Atom) printValue() string {
 	return "(unknown)"
 }
 
+// CausalTree is a Register and a Value containing other data structures.
 type CausalTree struct {
 	atoms []Atom
 }
 
 func (*CausalTree) isValue() {}
 
+// PrintTable prints the internal tree's atom structure for debugging.
 func (t *CausalTree) PrintTable() string {
-	var lastID AtomID = -1
+	var lastID atomID = -1
 	var sb strings.Builder
 	fmt.Fprintf(&sb, " cause |   id |      value \n")
 	fmt.Fprintf(&sb, "-------|------|------------\n")
@@ -176,7 +186,7 @@ func (t *CausalTree) PrintTable() string {
 // ----
 
 // Search for an atom given by 'id' and last seen at 'minLoc'
-func (t *CausalTree) searchAtom(id AtomID, minLoc int) int {
+func (t *CausalTree) searchAtom(id atomID, minLoc int) int {
 	if id == 0 {
 		return -1
 	}
@@ -189,7 +199,7 @@ func (t *CausalTree) searchAtom(id AtomID, minLoc int) int {
 }
 
 // Search for an insertion position for the given 'tag', with parent at 'loc'.
-func (t *CausalTree) searchPositionFor(tag AtomTag, loc int) int {
+func (t *CausalTree) searchPositionFor(tag atomTag, loc int) int {
 	if loc < 0 {
 		return 0
 	}
@@ -208,7 +218,7 @@ func (t *CausalTree) searchPositionFor(tag AtomTag, loc int) int {
 	return len(t.atoms)
 }
 
-func isExpectedTag(tag AtomTag, allowed ...AtomTag) bool {
+func isExpectedTag(tag atomTag, allowed ...atomTag) bool {
 	for _, other := range allowed {
 		if tag == other {
 			return true
@@ -217,7 +227,7 @@ func isExpectedTag(tag AtomTag, allowed ...AtomTag) bool {
 	return false
 }
 
-func (t *CausalTree) validate(loc int, child AtomTag) bool {
+func (t *CausalTree) validate(loc int, child atomTag) bool {
 	if loc < 0 {
 		return isExpectedTag(child, stringTag, counterTag, listTag)
 	}
@@ -242,7 +252,7 @@ func (t *CausalTree) validate(loc int, child AtomTag) bool {
 	}
 }
 
-func (t *CausalTree) addAtom(causeID AtomID, loc int, tag AtomTag, value int32) (AtomID, int) {
+func (t *CausalTree) addAtom(causeID atomID, loc int, tag atomTag, value int32) (atomID, int) {
 	if loc >= 0 && t.atoms[loc].id != causeID {
 		panic(fmt.Errorf("cause loc-ID mismatch: loc=%d id=%d atoms[%d].id=%d", loc, causeID, loc, t.atoms[loc].id))
 	}
@@ -250,7 +260,7 @@ func (t *CausalTree) addAtom(causeID AtomID, loc int, tag AtomTag, value int32) 
 		panic(fmt.Errorf("invalid child: loc=%d, tag=%v", loc, tag))
 	}
 	pos := t.searchPositionFor(tag, loc)
-	id := AtomID(len(t.atoms) + 1)
+	id := atomID(len(t.atoms) + 1)
 	t.atoms = append(t.atoms, Atom{})
 	copy(t.atoms[pos+1:], t.atoms[pos:])
 	t.atoms[pos] = Atom{id, causeID, tag, value}
@@ -320,13 +330,13 @@ func (t *CausalTree) causalBlockSize(i int) int {
 	return j - i
 }
 
-func (t *CausalTree) deleteAtom(atomID AtomID, minLoc int) int {
+func (t *CausalTree) deleteAtom(atomID atomID, minLoc int) int {
 	loc := t.searchAtom(atomID, minLoc)
 	t.addAtom(atomID, loc, deleteTag, 0)
 	return loc
 }
 
-func (t *CausalTree) findNonDeletedCause(loc int) (AtomID, int) {
+func (t *CausalTree) findNonDeletedCause(loc int) (atomID, int) {
 	causeID := t.atoms[loc].causeID
 	isDeleted := false
 	for i := loc - 1; i >= 0; i-- {
@@ -359,7 +369,7 @@ func (t *CausalTree) findNonDeletedCause(loc int) (AtomID, int) {
 
 // ----
 
-func (t *CausalTree) newString(atomID AtomID, loc int) *String {
+func (t *CausalTree) newString(atomID atomID, loc int) *String {
 	id, loc := t.addAtom(atomID, loc, stringTag, 0)
 	return &String{
 		tree:   t,
@@ -368,7 +378,7 @@ func (t *CausalTree) newString(atomID AtomID, loc int) *String {
 	}
 }
 
-func (t *CausalTree) newCounter(atomID AtomID, loc int) *Counter {
+func (t *CausalTree) newCounter(atomID atomID, loc int) *Counter {
 	id, loc := t.addAtom(atomID, loc, counterTag, 0)
 	return &Counter{
 		tree:   t,
@@ -377,7 +387,7 @@ func (t *CausalTree) newCounter(atomID AtomID, loc int) *Counter {
 	}
 }
 
-func (t *CausalTree) newList(atomID AtomID, loc int) *List {
+func (t *CausalTree) newList(atomID atomID, loc int) *List {
 	id, loc := t.addAtom(atomID, loc, listTag, 0)
 	return &List{
 		tree:   t,
@@ -386,7 +396,6 @@ func (t *CausalTree) newList(atomID AtomID, loc int) *List {
 	}
 }
 
-// CausalTree implements Register
 func (t *CausalTree) SetString() *String   { return t.newString(0, -1) }
 func (t *CausalTree) SetCounter() *Counter { return t.newCounter(0, -1) }
 func (t *CausalTree) SetList() *List       { return t.newList(0, -1) }

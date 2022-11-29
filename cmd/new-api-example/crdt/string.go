@@ -4,17 +4,19 @@ import (
 	"fmt"
 )
 
+// String contains a mutable persistent string, or a sequence of Unicode codepoints ("chars").
 type String struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 
 func (*String) isValue() {}
 
+// Char represents a Unicode codepoint within a String.
 type Char struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 
@@ -34,9 +36,10 @@ func (s *String) Cursor() Cursor {
 
 // ----
 
+// StringCursor is a Cursor for walking and modifying a string.
 type StringCursor struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 
@@ -83,12 +86,12 @@ func (c *StringCursor) Element() *Char {
 	return &Char{c.tree, c.atomID, loc}
 }
 
-func (c *StringCursor) Insert(ch rune) (AtomID, int) {
+func (c *StringCursor) Insert(ch rune) *Char {
 	loc := c.tree.searchAtom(c.atomID, c.minLoc)
 	id, charLoc := c.tree.addAtom(c.atomID, loc, charTag, int32(ch))
 	c.atomID = id
 	c.minLoc = charLoc
-	return id, charLoc
+	return &Char{c.tree, id, charLoc}
 }
 
 func (c *StringCursor) Delete() {

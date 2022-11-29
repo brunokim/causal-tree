@@ -1,8 +1,9 @@
 package crdt
 
+// Counter represents a mutable integer value that may be incremented and decremented.
 type Counter struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 

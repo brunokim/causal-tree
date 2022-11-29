@@ -4,17 +4,19 @@ import (
 	"fmt"
 )
 
+// List is a Container of arbitrary elements in a specific order.
 type List struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 
 func (*List) isValue() {}
 
+// Elem is a list's element representation as a register, that may contain any other values.
 type Elem struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 
@@ -96,9 +98,10 @@ func (e *Elem) Value() Value {
 
 // ----
 
+// ListCursor is a Cursor that walks and modifies a List.
 type ListCursor struct {
 	tree   *CausalTree
-	atomID AtomID
+	atomID atomID
 	minLoc int
 }
 
