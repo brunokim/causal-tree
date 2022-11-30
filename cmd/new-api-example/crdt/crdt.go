@@ -184,9 +184,14 @@ func (t *CausalTree) PrintTable() string {
 
 // ----
 
+// treePosition represents a given atom's position in a causal tree.
 type treePosition struct {
-	tree         *CausalTree
-	atomID       atomID
+	tree   *CausalTree
+	atomID atomID
+
+	// treePosition stores the last known position within the atoms slice to speed-up searching:
+	// since atoms can only be inserted, its actual position may only be at or to the right
+	// of the latest known position.
 	lastKnownPos int
 }
 

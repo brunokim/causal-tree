@@ -156,12 +156,12 @@ func (*CausalTree) SetList() *List       { ... }
 func (*CausalTree) Clear()               { ... }
 func (*CausalTree) Value() Value         { ... }
 
-// treeLocation represents a given atom's location in a causal tree.
-type treeLocation struct {
+// treePosition represents a given atom's position in a causal tree.
+type treePosition struct {
     tree   *CausalTree
     atomID AtomID
 
-    // treeLocation stores the last known position within the atoms slice to speed-up searching:
+    // treePosition stores the last known position within the atoms slice to speed-up searching:
     // since atoms can only be inserted, its actual position may only be at or to the right
     // of the latest known position.
     lastKnownPos int
@@ -172,7 +172,7 @@ type treeLocation struct {
 
 ```go
 // String and StringCursor are just pointers to a location within the string.
-type String struct { treeLocation }
+type String struct { treePosition }
 func (*String) isValue() {}
 
 // StringCursor returns a cursor to the string's initial position.
@@ -192,7 +192,7 @@ func (s *String) Snapshot() string { ... }
 func (s *String) Len() int { ... }
 
 // StringCursor is a mutable tree location.
-type StringCursor struct { treeLocation }
+type StringCursor struct { treePosition }
 
 // StringCursor implements Cursor, with generic mutating operations.
 func (cur *StringCursor) Index(i int) { ... }
@@ -210,7 +210,7 @@ func (cur *StringCursor) Insert(ch rune) { ... }
 // Char represents a Unicode codepoint within a String.
 // It is not a Value because it can't be set within registers, always existing within a
 // String.
-type Char struct { treeLocation }
+type Char struct { treePosition }
 
 func (ch *Char) Snapshot() rune { ... }
 ```
@@ -219,7 +219,7 @@ func (ch *Char) Snapshot() rune { ... }
 
 ```go
 // Counter is a Value representing a mutable integer.
-type Counter struct { treeLocation }
+type Counter struct { treePosition }
 func (*Counter) isValue() {}
 
 // Snapshot returns the current value of the counter.
@@ -234,7 +234,7 @@ func (c *Counter) Decrement(x int32) { ... }
 
 ```go
 // List and ListCursor are just pointers to a location within the list.
-type List struct { treeLocation }
+type List struct { treePosition }
 func (*List) isValue() {}
 
 // ListCursor returns a cursor to the list's initial position.
@@ -254,7 +254,7 @@ func (l *List) Snapshot() []interface{} { ... }
 func (l *List) Len() int { ... }
 
 // ListCursor is a mutable tree location.
-type ListCursor struct { treeLocation }
+type ListCursor struct { treePosition }
 
 // ListCursor implements Cursor, with generic mutating operations.
 func (cur *ListCursor) Index(i int) { ... }
@@ -272,7 +272,7 @@ func (cur *ListCursor) Insert() *Element { ... }
 // Element represents a position within a List.
 // It is not a Value because it can't be set within registers, always existing within a
 // List.
-type Element struct { treeLocation }
+type Element struct { treePosition }
 
 // Element can be set and reset, implementing a Register.
 func (*Element) SetString() *String   { ... }
