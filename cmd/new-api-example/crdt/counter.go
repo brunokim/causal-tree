@@ -8,15 +8,15 @@ type Counter struct {
 func (*Counter) isValue() {}
 
 func (cnt *Counter) increment(x int32) {
-	loc := cnt.currLoc()
-	cnt.tree.addAtom(cnt.atomID, loc, incrementTag, x)
+	pos := cnt.currPos()
+	cnt.tree.addAtom(cnt.atomID, pos, incrementTag, x)
 }
 
 func (cnt *Counter) Increment(x int32) { cnt.increment(+x) }
 func (cnt *Counter) Decrement(x int32) { cnt.increment(-x) }
 
 func (cnt *Counter) Snapshot() int32 {
-	loc := cnt.currLoc()
-	x, _, _ := cnt.tree.snapshotCounter(loc)
+	pos := cnt.currPos()
+	x, _, _ := cnt.tree.snapshotCounter(pos)
 	return x
 }

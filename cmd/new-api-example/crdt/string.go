@@ -17,8 +17,8 @@ type Char struct {
 }
 
 func (s *String) Snapshot() string {
-	loc := s.currLoc()
-	str, _, _ := s.tree.snapshotString(loc)
+	pos := s.currPos()
+	str, _, _ := s.tree.snapshotString(pos)
 	return str
 }
 
@@ -32,11 +32,11 @@ func (s *String) Cursor() Cursor {
 
 func (l *String) Len() int {
 	t := l.tree
-	loc := l.currLoc()
+	pos := l.currPos()
 
 	cnt := 0
-	j := loc + 1
-	for j < len(t.atoms) && t.withinBlock(j, loc) {
+	j := pos + 1
+	for j < len(t.atoms) && t.withinBlock(j, pos) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -67,11 +67,11 @@ func (c *StringCursor) Index(i int) {
 		panic("Invalid index")
 	}
 	t := c.tree
-	loc := c.currLoc()
+	pos := c.currPos()
 
 	cnt := -1
-	j := loc + 1
-	for j < len(t.atoms) && t.withinBlock(j, loc) {
+	j := pos + 1
+	for j < len(t.atoms) && t.withinBlock(j, pos) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -82,7 +82,7 @@ func (c *StringCursor) Index(i int) {
 			if !isDeleted {
 				cnt++
 				if cnt == i {
-					loc = j
+					pos = j
 					break
 				}
 			}
@@ -94,24 +94,24 @@ func (c *StringCursor) Index(i int) {
 	if cnt < i {
 		panic(fmt.Sprintf("string: index out of range: %d (size=%d)", i, cnt))
 	}
-	c.minLoc = loc
-	c.atomID = t.atoms[loc].id
+	c.lastKnownPos = pos
+	c.atomID = t.atoms[pos].id
 }
 
 func (c *StringCursor) Element() *Char {
-	c.currLoc()
+	c.currPos()
 	return &Char{c.treeLocation}
 }
 
 func (c *StringCursor) Insert(ch rune) *Char {
-	loc := c.currLoc()
-	id, charLoc := c.tree.addAtom(c.atomID, loc, charTag, int32(ch))
+	pos := c.currPos()
+	id, charLoc := c.tree.addAtom(c.atomID, pos, charTag, int32(ch))
 	c.atomID = id
-	c.minLoc = charLoc
+	c.lastKnownPos = charLoc
 	return &Char{c.treeLocation}
 }
 
 func (c *StringCursor) Delete() {
-	loc := c.tree.deleteAtom(c.atomID, c.minLoc)
-	c.atomID, c.minLoc = c.tree.findNonDeletedCause(loc)
+	pos := c.tree.deleteAtom(c.atomID, c.lastKnownPos)
+	c.atomID, c.lastKnownPos = c.tree.findNonDeletedCause(pos)
 }

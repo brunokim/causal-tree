@@ -25,18 +25,18 @@ func (l *List) Cursor() Cursor {
 }
 
 func (l *List) Snapshot() []interface{} {
-	loc := l.currLoc()
-	xs, _, _ := l.tree.snapshotList(loc)
+	pos := l.currPos()
+	xs, _, _ := l.tree.snapshotList(pos)
 	return xs
 }
 
 func (l *List) Len() int {
 	t := l.tree
-	loc := l.currLoc()
+	pos := l.currPos()
 
 	cnt := 0
-	j := loc + 1
-	for j < len(t.atoms) && t.withinBlock(j, loc) {
+	j := pos + 1
+	for j < len(t.atoms) && t.withinBlock(j, pos) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -56,10 +56,10 @@ func (l *List) Len() int {
 }
 
 func (e *Elem) Clear() {
-	loc := e.currLoc()
+	pos := e.currPos()
 
-	j := loc + 1
-	for j < len(e.tree.atoms) && e.tree.withinBlock(j, loc) {
+	j := pos + 1
+	for j < len(e.tree.atoms) && e.tree.withinBlock(j, pos) {
 		atom := e.tree.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -71,31 +71,31 @@ func (e *Elem) Clear() {
 			return
 		default:
 			fmt.Println(e.tree.PrintTable())
-			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", loc, j, atom.tag))
+			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", pos, j, atom.tag))
 		}
 	}
 }
 
 func (e *Elem) SetString() *String {
-	loc := e.currLoc()
-	return e.tree.newString(e.atomID, loc)
+	pos := e.currPos()
+	return e.tree.newString(e.atomID, pos)
 }
 
 func (e *Elem) SetCounter() *Counter {
-	loc := e.currLoc()
-	return e.tree.newCounter(e.atomID, loc)
+	pos := e.currPos()
+	return e.tree.newCounter(e.atomID, pos)
 }
 
 func (e *Elem) SetList() *List {
-	loc := e.currLoc()
-	return e.tree.newList(e.atomID, loc)
+	pos := e.currPos()
+	return e.tree.newList(e.atomID, pos)
 }
 
 func (e *Elem) Value() Value {
-	loc := e.currLoc()
+	pos := e.currPos()
 
-	j := loc + 1
-	for j < len(e.tree.atoms) && e.tree.withinBlock(j, loc) {
+	j := pos + 1
+	for j < len(e.tree.atoms) && e.tree.withinBlock(j, pos) {
 		atom := e.tree.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -105,7 +105,7 @@ func (e *Elem) Value() Value {
 			return e.tree.valueOf(j)
 		default:
 			fmt.Println(e.tree.PrintTable())
-			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", loc, j, atom.tag))
+			panic(fmt.Sprintf("elem @ %d: unexpected tag @ %d: %v", pos, j, atom.tag))
 		}
 	}
 	// Empty elem.
@@ -124,11 +124,11 @@ func (c *ListCursor) Index(i int) {
 		panic("Invalid negative index")
 	}
 	t := c.tree
-	loc := c.currLoc()
+	pos := c.currPos()
 
 	cnt := -1
-	j := loc + 1
-	for j < len(t.atoms) && t.withinBlock(j, loc) {
+	j := pos + 1
+	for j < len(t.atoms) && t.withinBlock(j, pos) {
 		atom := t.atoms[j]
 		switch atom.tag {
 		case deleteTag:
@@ -139,7 +139,7 @@ func (c *ListCursor) Index(i int) {
 			if !isDeleted {
 				cnt++
 				if cnt == i {
-					loc = j
+					pos = j
 					break
 				}
 			}
@@ -151,24 +151,24 @@ func (c *ListCursor) Index(i int) {
 	if cnt < i {
 		panic(fmt.Sprintf("list: index out of range: %d (size=%d)", i, cnt))
 	}
-	c.minLoc = loc
-	c.atomID = t.atoms[loc].id
+	c.lastKnownPos = pos
+	c.atomID = t.atoms[pos].id
 }
 
 func (c *ListCursor) Element() *Elem {
-	c.currLoc()
+	c.currPos()
 	return &Elem{c.treeLocation}
 }
 
 func (c *ListCursor) Insert() *Elem {
-	loc := c.currLoc()
-	id, charLoc := c.tree.addAtom(c.atomID, loc, elementTag, 0)
+	pos := c.currPos()
+	id, charLoc := c.tree.addAtom(c.atomID, pos, elementTag, 0)
 	c.atomID = id
-	c.minLoc = charLoc
+	c.lastKnownPos = charLoc
 	return &Elem{c.treeLocation}
 }
 
 func (c *ListCursor) Delete() {
-	loc := c.tree.deleteAtom(c.atomID, c.minLoc)
-	c.atomID, c.minLoc = c.tree.findNonDeletedCause(loc)
+	pos := c.tree.deleteAtom(c.atomID, c.lastKnownPos)
+	c.atomID, c.lastKnownPos = c.tree.findNonDeletedCause(pos)
 }

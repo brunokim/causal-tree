@@ -185,25 +185,25 @@ func (t *CausalTree) PrintTable() string {
 // ----
 
 type treeLocation struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	tree         *CausalTree
+	atomID       atomID
+	lastKnownPos int
 }
 
-func (c *treeLocation) currLoc() int {
-	loc := c.tree.searchAtom(c.atomID, c.minLoc)
-	c.minLoc = loc
-	return loc
+func (c *treeLocation) currPos() int {
+	pos := c.tree.searchAtom(c.atomID, c.lastKnownPos)
+	c.lastKnownPos = pos
+	return pos
 }
 
 // ----
 
-// Search for an atom given by 'id' and last seen at 'minLoc'
-func (t *CausalTree) searchAtom(id atomID, minLoc int) int {
+// Search for an atom given by 'id' and last seen at 'lastKnownPos'
+func (t *CausalTree) searchAtom(id atomID, lastKnownPos int) int {
 	if id == 0 {
 		return -1
 	}
-	for i := minLoc; i < len(t.atoms); i++ {
+	for i := lastKnownPos; i < len(t.atoms); i++ {
 		if t.atoms[i].id == id {
 			return i
 		}
@@ -211,17 +211,17 @@ func (t *CausalTree) searchAtom(id atomID, minLoc int) int {
 	return -1
 }
 
-// Search for an insertion position for the given 'tag', with parent at 'loc'.
-func (t *CausalTree) searchPositionFor(tag atomTag, loc int) int {
-	if loc < 0 {
+// Search for an insertion position for the given 'tag', with parent at 'pos'.
+func (t *CausalTree) searchIndexFor(tag atomTag, pos int) int {
+	if pos < 0 {
 		return 0
 	}
-	for i := loc + 1; i < len(t.atoms); i++ {
-		if t.atoms[i].causeID < t.atoms[loc].id {
+	for i := pos + 1; i < len(t.atoms); i++ {
+		if t.atoms[i].causeID < t.atoms[pos].id {
 			// End of causal block.
 			return i
 		}
-		if t.atoms[i].causeID == t.atoms[loc].id {
+		if t.atoms[i].causeID == t.atoms[pos].id {
 			// Sibling atom, sort by tag.
 			if priority(t.atoms[i].tag) >= priority(tag) {
 				return i
@@ -240,11 +240,11 @@ func isExpectedTag(tag atomTag, allowed ...atomTag) bool {
 	return false
 }
 
-func (t *CausalTree) validate(loc int, child atomTag) bool {
-	if loc < 0 {
+func (t *CausalTree) validate(pos int, child atomTag) bool {
+	if pos < 0 {
 		return isExpectedTag(child, stringTag, counterTag, listTag)
 	}
-	parent := t.atoms[loc].tag
+	parent := t.atoms[pos].tag
 	switch parent {
 	case deleteTag:
 		return false
@@ -265,20 +265,20 @@ func (t *CausalTree) validate(loc int, child atomTag) bool {
 	}
 }
 
-func (t *CausalTree) addAtom(causeID atomID, loc int, tag atomTag, value int32) (atomID, int) {
-	if loc >= 0 && t.atoms[loc].id != causeID {
-		panic(fmt.Errorf("cause loc-ID mismatch: loc=%d id=%d atoms[%d].id=%d", loc, causeID, loc, t.atoms[loc].id))
+func (t *CausalTree) addAtom(causeID atomID, pos int, tag atomTag, value int32) (atomID, int) {
+	if pos >= 0 && t.atoms[pos].id != causeID {
+		panic(fmt.Errorf("cause pos-ID mismatch: pos=%d id=%d atoms[%d].id=%d", pos, causeID, pos, t.atoms[pos].id))
 	}
-	if !t.validate(loc, tag) {
-		panic(fmt.Errorf("invalid child: loc=%d, tag=%v", loc, tag))
+	if !t.validate(pos, tag) {
+		panic(fmt.Errorf("invalid child: pos=%d, tag=%v", pos, tag))
 	}
-	pos := t.searchPositionFor(tag, loc)
+	i := t.searchIndexFor(tag, pos)
 	id := atomID(len(t.atoms) + 1)
 	t.atoms = append(t.atoms, Atom{})
-	copy(t.atoms[pos+1:], t.atoms[pos:])
-	t.atoms[pos] = Atom{id, causeID, tag, value}
+	copy(t.atoms[i+1:], t.atoms[i:])
+	t.atoms[i] = Atom{id, causeID, tag, value}
 
-	return id, pos
+	return id, i
 }
 
 func (t *CausalTree) withinBlock(j, i int) bool {
@@ -343,19 +343,19 @@ func (t *CausalTree) causalBlockSize(i int) int {
 	return j - i
 }
 
-func (t *CausalTree) deleteAtom(atomID atomID, minLoc int) int {
-	loc := t.searchAtom(atomID, minLoc)
-	t.addAtom(atomID, loc, deleteTag, 0)
-	return loc
+func (t *CausalTree) deleteAtom(atomID atomID, lastKnownPos int) int {
+	pos := t.searchAtom(atomID, lastKnownPos)
+	t.addAtom(atomID, pos, deleteTag, 0)
+	return pos
 }
 
-func (t *CausalTree) findNonDeletedCause(loc int) (atomID, int) {
-	causeID := t.atoms[loc].causeID
+func (t *CausalTree) findNonDeletedCause(pos int) (atomID, int) {
+	causeID := t.atoms[pos].causeID
 	isDeleted := false
-	for i := loc - 1; i >= 0; i-- {
+	for i := pos - 1; i >= 0; i-- {
 		if causeID == 0 {
 			// Cause is the root atom.
-			loc = -1
+			pos = -1
 			break
 		}
 		atom := t.atoms[i]
@@ -374,38 +374,38 @@ func (t *CausalTree) findNonDeletedCause(loc int) (atomID, int) {
 			continue
 		}
 		// Found existing cause, set its location.
-		loc = i
+		pos = i
 		break
 	}
-	return causeID, loc
+	return causeID, pos
 }
 
 // ----
 
-func (t *CausalTree) newString(atomID atomID, loc int) *String {
-	id, loc := t.addAtom(atomID, loc, stringTag, 0)
+func (t *CausalTree) newString(atomID atomID, pos int) *String {
+	id, pos := t.addAtom(atomID, pos, stringTag, 0)
 	return &String{treeLocation{
-		tree:   t,
-		atomID: id,
-		minLoc: loc,
+		tree:         t,
+		atomID:       id,
+		lastKnownPos: pos,
 	}}
 }
 
-func (t *CausalTree) newCounter(atomID atomID, loc int) *Counter {
-	id, loc := t.addAtom(atomID, loc, counterTag, 0)
+func (t *CausalTree) newCounter(atomID atomID, pos int) *Counter {
+	id, pos := t.addAtom(atomID, pos, counterTag, 0)
 	return &Counter{treeLocation{
-		tree:   t,
-		atomID: id,
-		minLoc: loc,
+		tree:         t,
+		atomID:       id,
+		lastKnownPos: pos,
 	}}
 }
 
-func (t *CausalTree) newList(atomID atomID, loc int) *List {
-	id, loc := t.addAtom(atomID, loc, listTag, 0)
+func (t *CausalTree) newList(atomID atomID, pos int) *List {
+	id, pos := t.addAtom(atomID, pos, listTag, 0)
 	return &List{treeLocation{
-		tree:   t,
-		atomID: id,
-		minLoc: loc,
+		tree:         t,
+		atomID:       id,
+		lastKnownPos: pos,
 	}}
 }
 
