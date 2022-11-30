@@ -382,31 +382,25 @@ func (t *CausalTree) findNonDeletedCause(pos int) (atomID, int) {
 
 // ----
 
-func (t *CausalTree) newString(atomID atomID, pos int) *String {
-	id, pos := t.addAtom(atomID, pos, stringTag, 0)
-	return &String{treeLocation{
+func (t *CausalTree) newValue(atomID atomID, pos int, tag atomTag) treeLocation {
+	id, pos := t.addAtom(atomID, pos, tag, 0)
+	return treeLocation{
 		tree:         t,
 		atomID:       id,
 		lastKnownPos: pos,
-	}}
+	}
+}
+
+func (t *CausalTree) newString(atomID atomID, pos int) *String {
+	return &String{t.newValue(atomID, pos, stringTag)}
 }
 
 func (t *CausalTree) newCounter(atomID atomID, pos int) *Counter {
-	id, pos := t.addAtom(atomID, pos, counterTag, 0)
-	return &Counter{treeLocation{
-		tree:         t,
-		atomID:       id,
-		lastKnownPos: pos,
-	}}
+	return &Counter{t.newValue(atomID, pos, counterTag)}
 }
 
 func (t *CausalTree) newList(atomID atomID, pos int) *List {
-	id, pos := t.addAtom(atomID, pos, listTag, 0)
-	return &List{treeLocation{
-		tree:         t,
-		atomID:       id,
-		lastKnownPos: pos,
-	}}
+	return &List{t.newValue(atomID, pos, listTag)}
 }
 
 func (t *CausalTree) SetString() *String   { return t.newString(0, -1) }
