@@ -22,6 +22,8 @@ type Register interface {
 
 // Container represents a collection of values.
 type Container interface {
+	// Len walks the container and returns the number of elements.
+	Len() int
 	// Cursor returns the container's cursor initialized to its head position (index=-1).
 	Cursor() Cursor
 }
@@ -33,9 +35,6 @@ type Container interface {
 //
 // - Element() returns the pointed element. It panics if the cursor is pointing to the container's head.
 type Cursor interface {
-	// Len moves the cursor to the last element and returns the number of elements.
-	//Len() int
-
 	// Index moves the cursor to the i-th element (container's head=-1). It panics if i is out of bounds.
 	Index(i int)
 	// Delete removes the pointed element from the collection. The cursor is moved to the

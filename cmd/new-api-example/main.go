@@ -42,7 +42,7 @@ func main() {
 		cursor.Insert('r')
 		cursor.Insert('d')
 		cursor.Insert('t')
-		fmt.Println("set string:", t.Snapshot())
+		fmt.Println("set string:", t.Snapshot(), "- size:", s1.Len())
 	}
 	//
 	{
@@ -51,7 +51,7 @@ func main() {
 		cursor.Insert('w')
 		cursor.Insert('o')
 		cursor.Insert('w')
-		fmt.Println("set string:", t.Snapshot())
+		fmt.Println("set string:", t.Snapshot(), "- size:", s2.Len())
 	}
 	// Abstract walk, must know insertion order.
 	{
@@ -82,7 +82,7 @@ func main() {
 		strCursor.Insert('o')
 		strCursor.Insert('g')
 
-		fmt.Println("set list:", t.Snapshot())
+		fmt.Println("set list:", t.Snapshot(), "- size:", l1.Len())
 	}
 	// Modify embedded counter
 	{
@@ -100,14 +100,14 @@ func main() {
 		cursor.Delete()
 		cursor.Insert('f')
 		cursor.Insert('i')
-		fmt.Println("modify string:", t.Snapshot())
+		fmt.Println("modify string:", t.Snapshot(), "- size:", l1.Len())
 	}
 	// Delete elem
 	{
 		cursor := l1.ListCursor()
 		cursor.Index(1)
 		cursor.Delete()
-		fmt.Println("delete elem:", t.Snapshot())
+		fmt.Println("delete elem:", t.Snapshot(), "- size:", l1.Len())
 	}
 	// Delete counter and mutate after deletion.
 	{
@@ -117,7 +117,7 @@ func main() {
 		cnt := elem.Value().(*crdt.Counter)
 		elem.Clear()
 		cnt.Increment(27)
-		fmt.Println("delete counter:", t.Snapshot())
+		fmt.Println("delete counter:", t.Snapshot(), "- size:", l1.Len())
 	}
 	// Insert char having deleted character as parent.
 	{
@@ -134,7 +134,7 @@ func main() {
 
 		c1.Insert('x')
 		c2.Insert('w')
-		fmt.Println("modify string:", t.Snapshot())
+		fmt.Println("modify string:", t.Snapshot(), "- size:", l1.Len())
 	}
 
 	fmt.Println(t.PrintTable())

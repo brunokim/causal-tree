@@ -107,6 +107,8 @@ type Register interface {
 
 // Container represents a collection of values.
 type Container interface {
+    // Len walks the container and returns the number of elements.
+    Len() int
     // Cursor returns the container's cursor initialized to its starting position.
     Cursor() Cursor
 }
@@ -115,8 +117,6 @@ type Container interface {
 // Concrete cursors have an Insert() method with appropriate parameters and return type.
 // Concrete cursors have a Value() method with appropriate return type.
 type Cursor interface {
-    // Len moves the cursor to the last element and returns the number of elements.
-    Len() int
     // Index moves the cursor to the i-th element. It panics if i is out of bounds.
     Index(i int)
     // Delete removes the pointed element from the collection. The cursor is moved to the
@@ -188,11 +188,13 @@ func (s *String) Cursor() Cursor {
 // Snapshot returns the structure's representation as a string.
 func (s *String) Snapshot() string { ... }
 
+// Len returns the String's number of codepoints.
+func (s *String) Len() int { ... }
+
 // StringCursor is a mutable tree location.
 type StringCursor struct { treeLocation }
 
 // StringCursor implements Cursor, with generic mutating operations.
-func (cur *StringCursor) Len() int    { ... }
 func (cur *StringCursor) Index(i int) { ... }
 func (cur *StringCursor) Delete()     { ... }
 
@@ -248,11 +250,13 @@ func (l *List) Cursor() Cursor {
 // Snapshot returns the structure's representation as a slice.
 func (l *List) Snapshot() []interface{} { ... }
 
+// Len returns the number of elements in the list.
+func (l *List) Len() int { ... }
+
 // ListCursor is a mutable tree location.
 type ListCursor struct { treeLocation }
 
 // ListCursor implements Cursor, with generic mutating operations.
-func (cur *ListCursor) Len() int    { ... }
 func (cur *ListCursor) Index(i int) { ... }
 func (cur *ListCursor) Delete()     { ... }
 
@@ -278,8 +282,3 @@ func (*Element) Clear()               { ... }
 func (*Element) Value() Value         { ... }
 ```
 
-## Persistent representation
-
-### AtomID
-
-### Atom

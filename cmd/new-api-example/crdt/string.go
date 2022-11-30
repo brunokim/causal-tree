@@ -34,6 +34,32 @@ func (s *String) Cursor() Cursor {
 	return s.StringCursor()
 }
 
+func (l *String) Len() int {
+	t := l.tree
+	loc := t.searchAtom(l.atomID, l.minLoc)
+	l.minLoc = loc
+
+	cnt := 0
+	j := loc + 1
+	for j < len(t.atoms) && t.withinBlock(j, loc) {
+		atom := t.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			// String is already deleted, but do nothing
+			j++
+		case charTag:
+			size, isDeleted := t.charBlock(j)
+			if !isDeleted {
+				cnt++
+			}
+			j += size
+		default:
+			panic(fmt.Sprintf("string: unexpected tag: %v", atom.tag))
+		}
+	}
+	return cnt
+}
+
 // ----
 
 // StringCursor is a Cursor for walking and modifying a string.
@@ -44,8 +70,8 @@ type StringCursor struct {
 }
 
 func (c *StringCursor) Index(i int) {
-	if i < 0 {
-		panic("Invalid negative index")
+	if i < -1 {
+		panic("Invalid index")
 	}
 	t := c.tree
 	loc := t.searchAtom(c.atomID, c.minLoc)

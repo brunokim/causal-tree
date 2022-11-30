@@ -34,6 +34,32 @@ func (l *List) Snapshot() []interface{} {
 	return xs
 }
 
+func (l *List) Len() int {
+	t := l.tree
+	loc := t.searchAtom(l.atomID, l.minLoc)
+	l.minLoc = loc
+
+	cnt := 0
+	j := loc + 1
+	for j < len(t.atoms) && t.withinBlock(j, loc) {
+		atom := t.atoms[j]
+		switch atom.tag {
+		case deleteTag:
+			// List is already deleted, but do nothing
+			j++
+		case elementTag:
+			size, isDeleted := t.elemBlock(j)
+			if !isDeleted {
+				cnt++
+			}
+			j += size
+		default:
+			panic(fmt.Sprintf("list: unexpected tag: %v", atom.tag))
+		}
+	}
+	return cnt
+}
+
 func (e *Elem) Clear() {
 	loc := e.tree.searchAtom(e.atomID, e.minLoc)
 	e.minLoc = loc
@@ -106,7 +132,7 @@ type ListCursor struct {
 }
 
 func (c *ListCursor) Index(i int) {
-	if i < 0 {
+	if i < -1 {
 		panic("Invalid negative index")
 	}
 	t := c.tree
