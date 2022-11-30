@@ -21,11 +21,10 @@ type Register interface {
 }
 
 // Container represents a collection of values.
+// Concrete containers have a Cursor() method that returns a type-appropriate cursor for the container.
 type Container interface {
 	// Len walks the container and returns the number of elements.
 	Len() int
-	// Cursor returns the container's cursor initialized to its head position (index=-1).
-	Cursor() Cursor
 }
 
 // Cursor represents a pointer to a container's element, or the container's head.
@@ -47,6 +46,22 @@ type Cursor interface {
 // Concrete Values have a Snapshot() method that return the value's Go representation.
 type Value interface {
 	isValue()
+}
+
+// ----
+
+func CursorAt(container Container, i int) Cursor {
+	var cursor Cursor
+	switch c := container.(type) {
+	case *String:
+		cursor = c.StringCursor()
+	case *List:
+		cursor = c.ListCursor()
+	default:
+		panic(fmt.Sprintf("unexpected container %T", container))
+	}
+	cursor.Index(i)
+	return cursor
 }
 
 // ----

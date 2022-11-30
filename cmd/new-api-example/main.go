@@ -56,8 +56,7 @@ func main() {
 	// Abstract walk over the current string, must know insertion order.
 	{
 		x1 := t.Value().(crdt.Container)
-		cur := x1.Cursor()
-		cur.Index(2)
+		cur := crdt.CursorAt(x1, 2)
 		cur.Delete()
 		fmt.Println("delete $.2:", t.Snapshot())
 	}
