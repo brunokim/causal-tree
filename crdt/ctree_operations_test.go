@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/brunokim/causal-tree/crdt"
 )
 
@@ -29,6 +31,7 @@ import (
 // fork <local> <remote>             -- fork list 'local' into list 'remote'.
 // merge <local> <remote>            -- merge list 'remote' into list 'local'.
 // check <local> <str>               -- check that the contents of 'local' spell 'str'.
+// checkJSON <local> <str>           -- check that the contents of JSON string 'local' is equivalent to the contents of JSON string 'str'.
 //
 // Trees are referred by their order of creation, NOT by their sitemap index.
 // The fork operation requires specifying the correct remote index, even if it can be
@@ -46,6 +49,7 @@ const (
 	fork
 	merge
 	check
+	checkJSON
 	insertStr
 )
 
@@ -185,9 +189,12 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 			if s := tree.ToString(); s != op.str {
 				t.Errorf("%d: got tree[%d] = %q, want %q", i, op.local, s, op.str)
 			}
+		case checkJSON:
+			s, _ := tree.ToJSON()
+			assert.JSONEq(t, string(s), op.str, "%d: got tree[%d] = %q, want equivalent of %q", i, op.local, s, op.str)
 		}
 		// Dump trees into testfile.
-		if f != nil && op.op != check {
+		if f != nil && op.op != check && op.op != checkJSON {
 			bs, err := json.Marshal(map[string]interface{}{
 				"Type":   "test",
 				"Action": op.String(),
