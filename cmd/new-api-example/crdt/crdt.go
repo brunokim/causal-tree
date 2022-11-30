@@ -184,6 +184,20 @@ func (t *CausalTree) PrintTable() string {
 
 // ----
 
+type treeLocation struct {
+	tree   *CausalTree
+	atomID atomID
+	minLoc int
+}
+
+func (c *treeLocation) currLoc() int {
+	loc := c.tree.searchAtom(c.atomID, c.minLoc)
+	c.minLoc = loc
+	return loc
+}
+
+// ----
+
 // Search for an atom given by 'id' and last seen at 'minLoc'
 func (t *CausalTree) searchAtom(id atomID, minLoc int) int {
 	if id == 0 {
@@ -370,29 +384,29 @@ func (t *CausalTree) findNonDeletedCause(loc int) (atomID, int) {
 
 func (t *CausalTree) newString(atomID atomID, loc int) *String {
 	id, loc := t.addAtom(atomID, loc, stringTag, 0)
-	return &String{
+	return &String{treeLocation{
 		tree:   t,
 		atomID: id,
 		minLoc: loc,
-	}
+	}}
 }
 
 func (t *CausalTree) newCounter(atomID atomID, loc int) *Counter {
 	id, loc := t.addAtom(atomID, loc, counterTag, 0)
-	return &Counter{
+	return &Counter{treeLocation{
 		tree:   t,
 		atomID: id,
 		minLoc: loc,
-	}
+	}}
 }
 
 func (t *CausalTree) newList(atomID atomID, loc int) *List {
 	id, loc := t.addAtom(atomID, loc, listTag, 0)
-	return &List{
+	return &List{treeLocation{
 		tree:   t,
 		atomID: id,
 		minLoc: loc,
-	}
+	}}
 }
 
 func (t *CausalTree) SetString() *String   { return t.newString(0, -1) }
@@ -405,11 +419,11 @@ func (t *CausalTree) valueOf(i int) Value {
 	atom := t.atoms[i]
 	switch atom.tag {
 	case stringTag:
-		return &String{t, atom.id, i}
+		return &String{treeLocation{t, atom.id, i}}
 	case counterTag:
-		return &Counter{t, atom.id, i}
+		return &Counter{treeLocation{t, atom.id, i}}
 	case listTag:
-		return &List{t, atom.id, i}
+		return &List{treeLocation{t, atom.id, i}}
 	default:
 		panic(fmt.Sprintf("valueOf: unexpected tag: %v", atom.tag))
 	}

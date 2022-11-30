@@ -6,22 +6,18 @@ import (
 
 // List is a Container of arbitrary elements in a specific order.
 type List struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	treeLocation
 }
 
 func (*List) isValue() {}
 
 // Elem is a list's element representation as a register, that may contain any other values.
 type Elem struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	treeLocation
 }
 
 func (l *List) ListCursor() *ListCursor {
-	return &ListCursor{l.tree, l.atomID, l.minLoc}
+	return &ListCursor{l.treeLocation}
 }
 
 func (l *List) Cursor() Cursor {
@@ -29,15 +25,14 @@ func (l *List) Cursor() Cursor {
 }
 
 func (l *List) Snapshot() []interface{} {
-	loc := l.tree.searchAtom(l.atomID, l.minLoc)
+	loc := l.currLoc()
 	xs, _, _ := l.tree.snapshotList(loc)
 	return xs
 }
 
 func (l *List) Len() int {
 	t := l.tree
-	loc := t.searchAtom(l.atomID, l.minLoc)
-	l.minLoc = loc
+	loc := l.currLoc()
 
 	cnt := 0
 	j := loc + 1
@@ -61,8 +56,7 @@ func (l *List) Len() int {
 }
 
 func (e *Elem) Clear() {
-	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	e.minLoc = loc
+	loc := e.currLoc()
 
 	j := loc + 1
 	for j < len(e.tree.atoms) && e.tree.withinBlock(j, loc) {
@@ -83,26 +77,22 @@ func (e *Elem) Clear() {
 }
 
 func (e *Elem) SetString() *String {
-	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	e.minLoc = loc
+	loc := e.currLoc()
 	return e.tree.newString(e.atomID, loc)
 }
 
 func (e *Elem) SetCounter() *Counter {
-	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	e.minLoc = loc
+	loc := e.currLoc()
 	return e.tree.newCounter(e.atomID, loc)
 }
 
 func (e *Elem) SetList() *List {
-	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	e.minLoc = loc
+	loc := e.currLoc()
 	return e.tree.newList(e.atomID, loc)
 }
 
 func (e *Elem) Value() Value {
-	loc := e.tree.searchAtom(e.atomID, e.minLoc)
-	e.minLoc = loc
+	loc := e.currLoc()
 
 	j := loc + 1
 	for j < len(e.tree.atoms) && e.tree.withinBlock(j, loc) {
@@ -126,9 +116,7 @@ func (e *Elem) Value() Value {
 
 // ListCursor is a Cursor that walks and modifies a List.
 type ListCursor struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	treeLocation
 }
 
 func (c *ListCursor) Index(i int) {
@@ -136,8 +124,7 @@ func (c *ListCursor) Index(i int) {
 		panic("Invalid negative index")
 	}
 	t := c.tree
-	loc := t.searchAtom(c.atomID, c.minLoc)
-	c.minLoc = loc
+	loc := c.currLoc()
 
 	cnt := -1
 	j := loc + 1
@@ -169,17 +156,16 @@ func (c *ListCursor) Index(i int) {
 }
 
 func (c *ListCursor) Element() *Elem {
-	loc := c.tree.searchAtom(c.atomID, c.minLoc)
-	c.minLoc = loc
-	return &Elem{c.tree, c.atomID, loc}
+	c.currLoc()
+	return &Elem{c.treeLocation}
 }
 
 func (c *ListCursor) Insert() *Elem {
-	loc := c.tree.searchAtom(c.atomID, c.minLoc)
+	loc := c.currLoc()
 	id, charLoc := c.tree.addAtom(c.atomID, loc, elementTag, 0)
 	c.atomID = id
 	c.minLoc = charLoc
-	return &Elem{c.tree, id, charLoc}
+	return &Elem{c.treeLocation}
 }
 
 func (c *ListCursor) Delete() {

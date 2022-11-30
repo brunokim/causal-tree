@@ -6,28 +6,24 @@ import (
 
 // String contains a mutable persistent string, or a sequence of Unicode codepoints ("chars").
 type String struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	treeLocation
 }
 
 func (*String) isValue() {}
 
 // Char represents a Unicode codepoint within a String.
 type Char struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	treeLocation
 }
 
 func (s *String) Snapshot() string {
-	loc := s.tree.searchAtom(s.atomID, s.minLoc)
+	loc := s.currLoc()
 	str, _, _ := s.tree.snapshotString(loc)
 	return str
 }
 
 func (s *String) StringCursor() *StringCursor {
-	return &StringCursor{s.tree, s.atomID, s.minLoc}
+	return &StringCursor{s.treeLocation}
 }
 
 func (s *String) Cursor() Cursor {
@@ -36,8 +32,7 @@ func (s *String) Cursor() Cursor {
 
 func (l *String) Len() int {
 	t := l.tree
-	loc := t.searchAtom(l.atomID, l.minLoc)
-	l.minLoc = loc
+	loc := l.currLoc()
 
 	cnt := 0
 	j := loc + 1
@@ -64,9 +59,7 @@ func (l *String) Len() int {
 
 // StringCursor is a Cursor for walking and modifying a string.
 type StringCursor struct {
-	tree   *CausalTree
-	atomID atomID
-	minLoc int
+	treeLocation
 }
 
 func (c *StringCursor) Index(i int) {
@@ -74,8 +67,7 @@ func (c *StringCursor) Index(i int) {
 		panic("Invalid index")
 	}
 	t := c.tree
-	loc := t.searchAtom(c.atomID, c.minLoc)
-	c.minLoc = loc
+	loc := c.currLoc()
 
 	cnt := -1
 	j := loc + 1
@@ -107,17 +99,16 @@ func (c *StringCursor) Index(i int) {
 }
 
 func (c *StringCursor) Element() *Char {
-	loc := c.tree.searchAtom(c.atomID, c.minLoc)
-	c.minLoc = loc
-	return &Char{c.tree, c.atomID, loc}
+	c.currLoc()
+	return &Char{c.treeLocation}
 }
 
 func (c *StringCursor) Insert(ch rune) *Char {
-	loc := c.tree.searchAtom(c.atomID, c.minLoc)
+	loc := c.currLoc()
 	id, charLoc := c.tree.addAtom(c.atomID, loc, charTag, int32(ch))
 	c.atomID = id
 	c.minLoc = charLoc
-	return &Char{c.tree, id, charLoc}
+	return &Char{c.treeLocation}
 }
 
 func (c *StringCursor) Delete() {
