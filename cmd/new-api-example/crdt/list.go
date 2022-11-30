@@ -6,18 +6,18 @@ import (
 
 // List is a Container of arbitrary elements in a specific order.
 type List struct {
-	treeLocation
+	treePosition
 }
 
 func (*List) isValue() {}
 
 // Elem is a list's element representation as a register, that may contain any other values.
 type Elem struct {
-	treeLocation
+	treePosition
 }
 
 func (l *List) ListCursor() *ListCursor {
-	return &ListCursor{l.treeLocation}
+	return &ListCursor{l.treePosition}
 }
 
 func (l *List) Cursor() Cursor {
@@ -116,7 +116,7 @@ func (e *Elem) Value() Value {
 
 // ListCursor is a Cursor that walks and modifies a List.
 type ListCursor struct {
-	treeLocation
+	treePosition
 }
 
 func (c *ListCursor) Index(i int) {
@@ -157,7 +157,7 @@ func (c *ListCursor) Index(i int) {
 
 func (c *ListCursor) Element() *Elem {
 	c.currPos()
-	return &Elem{c.treeLocation}
+	return &Elem{c.treePosition}
 }
 
 func (c *ListCursor) Insert() *Elem {
@@ -165,7 +165,7 @@ func (c *ListCursor) Insert() *Elem {
 	id, charLoc := c.tree.addAtom(c.atomID, pos, elementTag, 0)
 	c.atomID = id
 	c.lastKnownPos = charLoc
-	return &Elem{c.treeLocation}
+	return &Elem{c.treePosition}
 }
 
 func (c *ListCursor) Delete() {

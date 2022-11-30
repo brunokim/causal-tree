@@ -184,13 +184,13 @@ func (t *CausalTree) PrintTable() string {
 
 // ----
 
-type treeLocation struct {
+type treePosition struct {
 	tree         *CausalTree
 	atomID       atomID
 	lastKnownPos int
 }
 
-func (c *treeLocation) currPos() int {
+func (c *treePosition) currPos() int {
 	pos := c.tree.searchAtom(c.atomID, c.lastKnownPos)
 	c.lastKnownPos = pos
 	return pos
@@ -382,9 +382,9 @@ func (t *CausalTree) findNonDeletedCause(pos int) (atomID, int) {
 
 // ----
 
-func (t *CausalTree) newValue(atomID atomID, pos int, tag atomTag) treeLocation {
+func (t *CausalTree) newValue(atomID atomID, pos int, tag atomTag) treePosition {
 	id, pos := t.addAtom(atomID, pos, tag, 0)
-	return treeLocation{
+	return treePosition{
 		tree:         t,
 		atomID:       id,
 		lastKnownPos: pos,
@@ -413,11 +413,11 @@ func (t *CausalTree) valueOf(i int) Value {
 	atom := t.atoms[i]
 	switch atom.tag {
 	case stringTag:
-		return &String{treeLocation{t, atom.id, i}}
+		return &String{treePosition{t, atom.id, i}}
 	case counterTag:
-		return &Counter{treeLocation{t, atom.id, i}}
+		return &Counter{treePosition{t, atom.id, i}}
 	case listTag:
-		return &List{treeLocation{t, atom.id, i}}
+		return &List{treePosition{t, atom.id, i}}
 	default:
 		panic(fmt.Sprintf("valueOf: unexpected tag: %v", atom.tag))
 	}

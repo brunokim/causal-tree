@@ -2,7 +2,7 @@ package crdt
 
 // Counter represents a mutable integer value that may be incremented and decremented.
 type Counter struct {
-	treeLocation
+	treePosition
 }
 
 func (*Counter) isValue() {}

@@ -6,14 +6,14 @@ import (
 
 // String contains a mutable persistent string, or a sequence of Unicode codepoints ("chars").
 type String struct {
-	treeLocation
+	treePosition
 }
 
 func (*String) isValue() {}
 
 // Char represents a Unicode codepoint within a String.
 type Char struct {
-	treeLocation
+	treePosition
 }
 
 func (s *String) Snapshot() string {
@@ -23,7 +23,7 @@ func (s *String) Snapshot() string {
 }
 
 func (s *String) StringCursor() *StringCursor {
-	return &StringCursor{s.treeLocation}
+	return &StringCursor{s.treePosition}
 }
 
 func (s *String) Cursor() Cursor {
@@ -59,7 +59,7 @@ func (l *String) Len() int {
 
 // StringCursor is a Cursor for walking and modifying a string.
 type StringCursor struct {
-	treeLocation
+	treePosition
 }
 
 func (c *StringCursor) Index(i int) {
@@ -100,7 +100,7 @@ func (c *StringCursor) Index(i int) {
 
 func (c *StringCursor) Element() *Char {
 	c.currPos()
-	return &Char{c.treeLocation}
+	return &Char{c.treePosition}
 }
 
 func (c *StringCursor) Insert(ch rune) *Char {
@@ -108,7 +108,7 @@ func (c *StringCursor) Insert(ch rune) *Char {
 	id, charLoc := c.tree.addAtom(c.atomID, pos, charTag, int32(ch))
 	c.atomID = id
 	c.lastKnownPos = charLoc
-	return &Char{c.treeLocation}
+	return &Char{c.treePosition}
 }
 
 func (c *StringCursor) Delete() {
