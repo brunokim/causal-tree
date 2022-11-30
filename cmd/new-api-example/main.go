@@ -37,7 +37,7 @@ func main() {
 	//
 	{
 		s1 := t.SetString()
-		cursor := s1.StringCursor()
+		cursor := s1.Cursor()
 		cursor.Insert('c')
 		cursor.Insert('r')
 		cursor.Insert('d')
@@ -47,7 +47,7 @@ func main() {
 	//
 	{
 		s2 := t.SetString()
-		cursor := s2.StringCursor()
+		cursor := s2.Cursor()
 		cursor.Insert('w')
 		cursor.Insert('o')
 		cursor.Insert('w')
@@ -70,13 +70,13 @@ func main() {
 	// Insert list
 	l1 := t.SetList()
 	{
-		cursor := l1.ListCursor()
+		cursor := l1.Cursor()
 		// counter element
 		cursor.Insert().SetCounter().Increment(10)
 		// nil element
 		cursor.Insert()
 		// string element
-		strCursor := cursor.Insert().SetString().StringCursor()
+		strCursor := cursor.Insert().SetString().Cursor()
 		strCursor.Insert('d')
 		strCursor.Insert('o')
 		strCursor.Insert('g')
@@ -85,7 +85,7 @@ func main() {
 	}
 	// Modify embedded counter
 	{
-		cursor := l1.ListCursor()
+		cursor := l1.Cursor()
 		cursor.Index(0)
 		cnt := cursor.Element().Value().(*crdt.Counter)
 		cnt.Increment(40)
@@ -94,10 +94,10 @@ func main() {
 	}
 	// Modify a string after it was pushed to the right by the previous insertion.
 	{
-		cur1 := l1.ListCursor()
+		cur1 := l1.Cursor()
 		cur1.Index(2)
 		s2 := cur1.Element().Value().(*crdt.String)
-		cur2 := s2.StringCursor()
+		cur2 := s2.Cursor()
 		cur2.Index(1)
 		cur2.Delete()
 		cur2.Delete()
@@ -107,14 +107,14 @@ func main() {
 	}
 	// Delete elem
 	{
-		cursor := l1.ListCursor()
+		cursor := l1.Cursor()
 		cursor.Index(1)
 		cursor.Delete()
 		fmt.Println("delete elem:", t.Snapshot(), "- size:", l1.Len())
 	}
 	// Delete counter and mutate after deletion.
 	{
-		cursor := l1.ListCursor()
+		cursor := l1.Cursor()
 		cursor.Index(0)
 		elem := cursor.Element()
 		cnt := elem.Value().(*crdt.Counter)
@@ -124,16 +124,16 @@ func main() {
 	}
 	// Insert char having deleted character as parent.
 	{
-		c0 := l1.ListCursor()
+		c0 := l1.Cursor()
 		c0.Index(1)
 		s1 := c0.Element().Value().(*crdt.String)
-		c1 := s1.StringCursor()
+		c1 := s1.Cursor()
 		c1.Index(2)
 		c1.Insert('-')
 		c1.Insert('z')
 		c1.Insert('y')
 
-		c2 := s1.StringCursor()
+		c2 := s1.Cursor()
 		c2.Index(5)
 		c2.Delete()
 

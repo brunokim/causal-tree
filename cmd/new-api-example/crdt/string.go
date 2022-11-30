@@ -22,12 +22,8 @@ func (s *String) Snapshot() string {
 	return str
 }
 
-func (s *String) StringCursor() *StringCursor {
+func (s *String) Cursor() *StringCursor {
 	return &StringCursor{s.treePosition}
-}
-
-func (s *String) Cursor() Cursor {
-	return s.StringCursor()
 }
 
 func (l *String) Len() int {

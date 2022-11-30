@@ -16,12 +16,8 @@ type Elem struct {
 	treePosition
 }
 
-func (l *List) ListCursor() *ListCursor {
+func (l *List) Cursor() *ListCursor {
 	return &ListCursor{l.treePosition}
-}
-
-func (l *List) Cursor() Cursor {
-	return l.ListCursor()
 }
 
 func (l *List) Snapshot() []interface{} {

@@ -50,18 +50,45 @@ type Value interface {
 
 // ----
 
+// CursorAt returns a cursor at the given index for the container.
 func CursorAt(container Container, i int) Cursor {
 	var cursor Cursor
 	switch c := container.(type) {
 	case *String:
-		cursor = c.StringCursor()
+		cursor = c.Cursor()
 	case *List:
-		cursor = c.ListCursor()
+		cursor = c.Cursor()
 	default:
-		panic(fmt.Sprintf("unexpected container %T", container))
+		panic(fmt.Sprintf("unexpected crdt.Container %T", container))
 	}
 	cursor.Index(i)
 	return cursor
+}
+
+// Element returns the element pointed at by the cursor. It panics if the cursor is pointing to the container's head.
+func Element(cursor Cursor) interface{} {
+	switch cur := cursor.(type) {
+	case *StringCursor:
+		return cur.Element()
+	case *ListCursor:
+		return cur.Element()
+	default:
+		panic(fmt.Sprintf("unexpected crdt.Cursor %T", cursor))
+	}
+}
+
+// Snapshot returns the Go's representation of the given value.
+func Snapshot(value Value) interface{} {
+	switch v := value.(type) {
+	case *String:
+		return v.Snapshot()
+	case *Counter:
+		return v.Snapshot()
+	case *List:
+		return v.Snapshot()
+	default:
+		panic(fmt.Sprintf("unexpected crdt.Value %T", value))
+	}
 }
 
 // ----
