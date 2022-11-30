@@ -125,20 +125,6 @@ type Cursor interface {
 }
 ```
 
-## Functions
-
-```go
-func Snapshot(value Value) interface{} {
-    switch v := value.(type) {
-    case *String: return v.Snapshot()
-    case *Counter: return v.Snapshot()
-    case *List: return v.Snapshot()
-    default:
-        panic(fmt.Sprintf("unknown value %T", value))
-    }
-}
-```
-
 ## Concrete types
 
 ### `CausalTree`

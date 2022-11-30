@@ -53,7 +53,7 @@ func main() {
 		cursor.Insert('w')
 		fmt.Println("set string:", t.Snapshot(), "- size:", s2.Len())
 	}
-	// Abstract walk, must know insertion order.
+	// Abstract walk over the current string, must know insertion order.
 	{
 		x1 := t.Value().(crdt.Container)
 		cur := x1.Cursor()
@@ -86,20 +86,24 @@ func main() {
 	}
 	// Modify embedded counter
 	{
-		cnt := crdt.ElementAt(l1.Cursor(), 0).(*crdt.Elem).Value().(*crdt.Counter)
+		cursor := l1.ListCursor()
+		cursor.Index(0)
+		cnt := cursor.Element().Value().(*crdt.Counter)
 		cnt.Increment(40)
 		cnt.Decrement(8)
 		fmt.Println("modify counter:", t.Snapshot())
 	}
 	// Modify a string after it was pushed to the right by the previous insertion.
 	{
-		s2 := crdt.ElementAt(l1.Cursor(), 2).(*crdt.Elem).Value().(*crdt.String)
-		cursor := s2.StringCursor()
-		cursor.Index(1)
-		cursor.Delete()
-		cursor.Delete()
-		cursor.Insert('f')
-		cursor.Insert('i')
+		cur1 := l1.ListCursor()
+		cur1.Index(2)
+		s2 := cur1.Element().Value().(*crdt.String)
+		cur2 := s2.StringCursor()
+		cur2.Index(1)
+		cur2.Delete()
+		cur2.Delete()
+		cur2.Insert('f')
+		cur2.Insert('i')
 		fmt.Println("modify string:", t.Snapshot(), "- size:", l1.Len())
 	}
 	// Delete elem
@@ -121,7 +125,9 @@ func main() {
 	}
 	// Insert char having deleted character as parent.
 	{
-		s1 := crdt.ElementAt(l1.Cursor(), 1).(*crdt.Elem).Value().(*crdt.String)
+		c0 := l1.ListCursor()
+		c0.Index(1)
+		s1 := c0.Element().Value().(*crdt.String)
 		c1 := s1.StringCursor()
 		c1.Index(2)
 		c1.Insert('-')

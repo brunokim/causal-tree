@@ -51,40 +51,6 @@ type Value interface {
 
 // ----
 
-// Snapshot returns the Value's Go representation.
-func Snapshot(value Value) interface{} {
-	switch v := value.(type) {
-	case *String:
-		return v.Snapshot()
-	case *Counter:
-		return v.Snapshot()
-	case *List:
-		return v.Snapshot()
-	default:
-		panic(fmt.Sprintf("unknown value %T", value))
-	}
-}
-
-// Element returns the Cursor's pointed element.
-func Element(cursor Cursor) interface{} {
-	switch c := cursor.(type) {
-	case *StringCursor:
-		return c.Element()
-	case *ListCursor:
-		return c.Element()
-	default:
-		panic(fmt.Sprintf("unknown cursor %T", cursor))
-	}
-}
-
-// ElementAt moves the cursor to the i-th position and returns the element there.
-func ElementAt(c Cursor, i int) interface{} {
-	c.Index(i)
-	return Element(c)
-}
-
-// ----
-
 type atomTag int
 
 const (
