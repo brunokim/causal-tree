@@ -795,7 +795,7 @@ func (t *CausalTree) addAtom(value AtomValue) (AtomID, error) {
 // Auxiliary function that checks if 'atom' is a container.
 func isContainer(atom Atom) bool {
 	switch atom.Value.(type) {
-	case InsertStr:
+	case InsertStr, InsertCounter:
 		return true
 	default:
 		return false
@@ -1083,6 +1083,10 @@ func (t *CausalTree) ToString() string {
 			chars[i] = '*'
 		case InsertChar:
 			chars[i] = value.Char
+		case InsertCounter:
+			chars[i] = '$'
+		case InsertAdd:
+			chars[i] = '0'
 		}
 	}
 	return string(chars)
@@ -1103,14 +1107,23 @@ func (t *CausalTree) ToJSON() ([]byte, error) {
 			elements = append(elements, string(value.Char))
 			i++
 		case InsertStr:
-			strSize := causalBlockSize(atoms[i:])
+			strSize := causalBlockSize(atoms[i:]) - 1
 			strChars := make([]rune, strSize)
 
-			for j, atom := range atoms[i+1 : i+strSize] {
+			for j, atom := range atoms[i+1 : i+strSize+1] {
 				strChars[j] = atom.Value.(InsertChar).Char
 			}
 			elements = append(elements, string(strChars))
-			i = i + strSize
+			i = i + strSize + 1
+		case InsertCounter:
+			counterSize := causalBlockSize(atoms[i:]) - 1
+			var counterValue int32 = 0
+
+			for _, atom := range atoms[i+1 : i+counterSize+1] {
+				counterValue += atom.Value.(InsertAdd).Value
+			}
+			elements = append(elements, counterValue)
+			i = i + counterSize + 1
 		default:
 			return nil, fmt.Errorf("ToJSON: type not specified")
 		}
