@@ -525,7 +525,7 @@ func TestInsertCounterEdgeCases(t *testing.T) {
 			{op: checkJSON, local: 0, str: `[0, 0]`},
 		})
 	})
-	t.Run("MergeCounter", func(t *testing.T) {
+	t.Run("MergeDifferentCounters", func(t *testing.T) {
 		testOperations(t, []operation{
 			// Fork site 0:
 			{op: fork, local: 0, remote: 1},
@@ -540,6 +540,24 @@ func TestInsertCounterEdgeCases(t *testing.T) {
 			// Merge site #1 -> site #0
 			{op: merge, local: 0, remote: 1},
 			{op: checkJSON, local: 0, str: `[12, 23]`},
+		})
+	})
+	t.Run("MergeSameCounter", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert counter 11 into site 0
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 12},
+			{op: insertAdd, local: 0, val: -1},
+			{op: checkJSON, local: 0, str: `[11]`},
+			// Fork site 0:
+			{op: fork, local: 0, remote: 1},
+			{op: insertAdd, local: 0, val: -2},
+			{op: checkJSON, local: 0, str: `[9]`},
+			{op: insertAdd, local: 1, val: 9},
+			{op: checkJSON, local: 1, str: `[20]`},
+			// Merge site #1 -> site #0
+			{op: merge, local: 0, remote: 1},
+			{op: checkJSON, local: 0, str: `[18]`}, //12 - 1 - 2 + 9
 		})
 	})
 	t.Run("DeleteCounter", func(t *testing.T) {
