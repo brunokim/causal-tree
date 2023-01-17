@@ -39,29 +39,29 @@ func TestCausalTree(t *testing.T) {
 		{op: insertChar, local: 0, char: 'T'},
 		{op: insertChar, local: 0, char: 'R'},
 		{op: insertChar, local: 0, char: 'L'},
-		{op: check, local: 0, str: "CTRL"},
+		{op: checkJSON, local: 0, str: `["C", "T", "R", "L"]`},
 		// Site #1: CMD --> CMDALT
 		{op: insertChar, local: 1, char: 'A'},
 		{op: insertChar, local: 1, char: 'L'},
 		{op: insertChar, local: 1, char: 'T'},
-		{op: check, local: 1, str: "CMDALT"},
+		{op: checkJSON, local: 1, str: `["C", "M", "D", "A", "L", "T"]`},
 		// Site #2: CMD --> CMDDEL
 		{op: insertChar, local: 2, char: 'D'},
 		{op: insertChar, local: 2, char: 'E'},
 		{op: insertChar, local: 2, char: 'L'},
-		{op: check, local: 2, str: "CMDDEL"},
+		{op: checkJSON, local: 2, str: `["C", "M", "D", "D", "E", "L"]`},
 		// Merge site #1 into #0 --> CTRLALT
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "CTRLALT"},
+		{op: checkJSON, local: 0, str: `["C", "T", "R", "L", "A", "L", "T"]`},
 		// Merge site #2 into #0 --> CTRLALTDEL
 		{op: merge, local: 0, remote: 2},
-		{op: check, local: 0, str: "CTRLALTDEL"},
+		{op: checkJSON, local: 0, str: `["C", "T", "R", "L", "A", "L", "T", "D", "E", "L"]`},
 		// Merge site #1 into #2 --> CMDALTDEL
 		{op: merge, local: 2, remote: 1},
-		{op: check, local: 2, str: "CMDALTDEL"},
+		{op: checkJSON, local: 2, str: `["C", "M", "D", "A", "L", "T", "D", "E", "L"]`},
 		// Merge site #0 into #2 --> CTRLALTDEL
 		{op: merge, local: 2, remote: 0},
-		{op: check, local: 2, str: "CTRLALTDEL"},
+		{op: checkJSON, local: 2, str: `["C", "T", "R", "L", "A", "L", "T", "D", "E", "L"]`},
 	})
 }
 
@@ -93,24 +93,24 @@ func TestBackwardsClock(t *testing.T) {
 		{op: insertChar, local: 3, char: '.'},
 		{op: insertChar, local: 3, char: 'I'},
 		{op: insertChar, local: 3, char: 'O'},
-		{op: check, local: 3, str: "CODE.IO"},
+		{op: checkJSON, local: 3, str: `["C", "O", "D", "E", ".", "I", "O"]`},
 		// Site #2: CODE --> COOP
 		{op: deleteChar, local: 2},
 		{op: deleteChar, local: 2},
 		{op: insertChar, local: 2, char: 'O'},
 		{op: insertChar, local: 2, char: 'P'},
-		{op: check, local: 2, str: "COOP"},
+		{op: checkJSON, local: 2, str: `["C", "O", "O", "P"]`},
 		// Copy l2 into l4
 		{op: fork, local: 2, remote: 4},
 		// Merge site #3 into #2
 		{op: merge, local: 2, remote: 3},
-		{op: check, local: 2, str: "COOP.IO"},
+		{op: checkJSON, local: 2, str: `["C", "O", "O", "P", ".", "I", "O"]`},
 		// Merge site #4 (copy of #2 before merge) into #3
 		{op: merge, local: 3, remote: 4},
-		{op: check, local: 3, str: "COOP.IO"},
+		{op: checkJSON, local: 3, str: `["C", "O", "O", "P", ".", "I", "O"]`},
 		// Ensure other streams are not changed.
-		{op: check, local: 0, str: "C"},
-		{op: check, local: 1, str: "CODE"},
+		{op: checkJSON, local: 0, str: `["C"]`},
+		{op: checkJSON, local: 1, str: `["C", "O", "D", "E"]`},
 	})
 }
 
@@ -133,21 +133,21 @@ func TestUnknownRemoteYarn(t *testing.T) {
 		{op: fork, local: 0, remote: 1},
 		{op: insertChar, local: 1, char: 'C'},
 		{op: insertChar, local: 1, char: 'D'},
-		{op: check, local: 1, str: "ABCD"},
+		{op: checkJSON, local: 1, str: `["A", "B", "C", "D"]`},
 		// Site #2: ABCD --> ABCDEF
 		{op: fork, local: 1, remote: 2},
 		{op: insertChar, local: 2, char: 'E'},
 		{op: insertChar, local: 2, char: 'F'},
-		{op: check, local: 2, str: "ABCDEF"},
+		{op: checkJSON, local: 2, str: `["A", "B", "C", "D", "E", "F"]`},
 		// Merge site #2 into #1: ABCDEF --> ABCDGHEF
 		// Merging should not move the cursor (currently after D)
 		{op: merge, local: 1, remote: 2},
 		{op: insertChar, local: 1, char: 'G'},
 		{op: insertChar, local: 1, char: 'H'},
-		{op: check, local: 1, str: "ABCDGHEF"},
+		{op: checkJSON, local: 1, str: `["A", "B", "C", "D", "G", "H", "E", "F"]`},
 		// Merge site #1 into #0
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "ABCDGHEF"},
+		{op: checkJSON, local: 0, str: `["A", "B", "C", "D", "G", "H", "E", "F"]`},
 	})
 }
 
@@ -177,7 +177,7 @@ func TestDeleteCursor(t *testing.T) {
 		// Merge site #2 into #0: B is deleted and cursor is updated to A.
 		{op: merge, local: 0, remote: 2},
 		{op: insertChar, local: 0, char: 'X'},
-		{op: check, local: 0, str: "AXRS"},
+		{op: checkJSON, local: 0, str: `["A", "X", "R", "S"]`},
 	})
 }
 
@@ -195,11 +195,11 @@ func TestSetCursor(t *testing.T) {
 		{op: insertCharAt, char: 'd', pos: 2},
 		// Transform abcd -> xabdy
 		{op: insertCharAt, char: 'x', pos: -1},
-		{op: check, str: "xabcd"},
+		{op: checkJSON, str: `["x", "a", "b", "c", "d"]`},
 		{op: deleteCharAt, pos: 3},
-		{op: check, str: "xabd"},
+		{op: checkJSON, str: `["x", "a", "b", "d"]`},
 		{op: insertCharAt, char: 'y', pos: 3},
-		{op: check, str: "xabdy"},
+		{op: checkJSON, str: `["x", "a", "b", "d", "y"]`},
 	})
 }
 
@@ -216,25 +216,25 @@ func TestDeleteAfterMerge(t *testing.T) {
 		{op: insertChar, local: 0, char: 'b'},
 		{op: insertChar, local: 0, char: 'c'},
 		{op: insertChar, local: 0, char: 'd'},
-		{op: check, local: 0, str: "abcd"},
+		{op: checkJSON, local: 0, str: `["a", "b", "c", "d"]`},
 		// Create site #1: abcd -> xabdy
 		{op: fork, local: 0, remote: 1},
 		{op: insertCharAt, local: 1, char: 'x', pos: -1},
 		{op: deleteCharAt, local: 1, pos: 3},
 		{op: insertCharAt, local: 1, char: 'y', pos: 3},
 		{op: setCursor, local: 1, pos: 4},
-		{op: check, local: 1, str: "xabdy"},
+		{op: checkJSON, local: 1, str: `["x", "a", "b", "d", "y"]`},
 		// Edit site #0: abcd -> abcdefg
 		{op: insertChar, local: 0, char: 'e'},
 		{op: insertChar, local: 0, char: 'f'},
 		{op: insertChar, local: 0, char: 'g'},
-		{op: check, local: 0, str: "abcdefg"},
+		{op: checkJSON, local: 0, str: `["a", "b", "c", "d", "e", "f", "g"]`},
 		// Merge site #0 -> site #1
 		{op: merge, local: 1, remote: 0},
-		{op: check, local: 1, str: "xabdyefg"},
+		{op: checkJSON, local: 1, str: `["x", "a", "b", "d", "y", "e", "f", "g"]`},
 		// Merge site #1 -> site #0
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "xabdyefg"},
+		{op: checkJSON, local: 0, str: `["x", "a", "b", "d", "y", "e", "f", "g"]`},
 		// Delete everything from site #0: xabdyefg -> E
 		{op: insertCharAt, local: 0, char: 'E', pos: -1},
 		{op: deleteCharAt, local: 0, pos: 1}, // x
@@ -245,7 +245,7 @@ func TestDeleteAfterMerge(t *testing.T) {
 		{op: deleteCharAt, local: 0, pos: 1}, // e
 		{op: deleteCharAt, local: 0, pos: 1}, // f
 		{op: deleteCharAt, local: 0, pos: 1}, // g
-		{op: check, local: 0, str: "E"},
+		{op: checkJSON, local: 0, str: `["E"]`},
 	})
 }
 
@@ -265,7 +265,7 @@ func TestInsertsAtSamePosition(t *testing.T) {
 		{op: insertCharAt, char: 'r', pos: -1},
 		{op: insertCharAt, char: 't', pos: -1},
 		{op: insertCharAt, char: 's', pos: -1},
-		{op: check, str: "stressed"},
+		{op: checkJSON, str: `["s", "t", "r", "e", "s", "s", "e", "d"]`},
 	})
 }
 
@@ -278,21 +278,21 @@ func setupTestView(t *testing.T) []*crdt.CausalTree {
 		{op: insertChar, local: 0, char: 'b'},
 		{op: insertChar, local: 0, char: 'c'},
 		{op: insertChar, local: 0, char: 'd'},
-		{op: check, local: 0, str: "abcd"},
+		{op: checkJSON, local: 0, str: `["a", "b", "c", "d"]`},
 		// Create site #1: abcd -> xabdy
 		{op: fork, local: 0, remote: 1},
 		{op: insertCharAt, local: 1, char: 'x', pos: -1},
 		{op: deleteCharAt, local: 1, pos: 3},
 		{op: insertCharAt, local: 1, char: 'y', pos: 3},
-		{op: check, local: 1, str: "xabdy"},
+		{op: checkJSON, local: 1, str: `["x", "a", "b", "d", "y"]`},
 		// Edit site #0: abcde -> abcdefg
 		{op: insertChar, local: 0, char: 'e'},
 		{op: insertChar, local: 0, char: 'f'},
 		{op: insertChar, local: 0, char: 'g'},
-		{op: check, local: 0, str: "abcdefg"},
+		{op: checkJSON, local: 0, str: `["a", "b", "c", "d", "e", "f", "g"]`},
 		// Merge site #1 -> site #0
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "xabdyefg"},
+		{op: checkJSON, local: 0, str: `["x", "a", "b", "d", "y", "e", "f", "g"]`},
 	})
 	// Now, max time is [9 9] for both sites.
 }
@@ -383,10 +383,10 @@ func TestInsertStrEdgeCases(t *testing.T) {
 		testOperations(t, []operation{
 			// Insert empty str
 			{op: insertStr, local: 0},
-			{op: check, local: 0, str: "*"},
+			{op: checkJSON, local: 0, str: `[""]`},
 			// Insert another empty str
 			{op: insertStr, local: 0},
-			{op: check, local: 0, str: "**"},
+			{op: checkJSON, local: 0, str: `["", ""]`},
 		})
 	})
 	t.Run("MergeStr", func(t *testing.T) {
@@ -396,14 +396,14 @@ func TestInsertStrEdgeCases(t *testing.T) {
 			// Insert str 'a' into site 0
 			{op: insertStr, local: 0},
 			{op: insertChar, local: 0, char: 'a'},
-			{op: check, local: 0, str: "*a"},
+			{op: checkJSON, local: 0, str: `["a"]`},
 			// Insert str 'b' into site 1
 			{op: insertStr, local: 1},
 			{op: insertChar, local: 1, char: 'b'},
-			{op: check, local: 1, str: "*b"},
+			{op: checkJSON, local: 1, str: `["b"]`},
 			// Merge site #1 -> site #0
 			{op: merge, local: 0, remote: 1},
-			{op: check, local: 0, str: "*a*b"},
+			{op: checkJSON, local: 0, str: `["a", "b"]`},
 		})
 	})
 	t.Run("DeleteEmptyStr", func(t *testing.T) {
@@ -411,7 +411,7 @@ func TestInsertStrEdgeCases(t *testing.T) {
 			// Delete str container:
 			{op: insertStr, local: 0},
 			{op: deleteCharAt, pos: 0},
-			{op: check, local: 0, str: ""},
+			{op: checkJSON, local: 0, str: `null`},
 		})
 	})
 	t.Run("DeleteNonEmptyStr", func(t *testing.T) {
@@ -420,7 +420,7 @@ func TestInsertStrEdgeCases(t *testing.T) {
 			{op: insertStr, local: 0},
 			{op: insertChar, local: 0, char: 'a'},
 			{op: deleteCharAt, pos: 0},
-			{op: check, local: 0, str: ""},
+			{op: checkJSON, local: 0, str: `null`},
 		})
 	})
 }
@@ -435,13 +435,13 @@ func TestInsertStrDomainCases(t *testing.T) {
 			{op: insertChar, local: 0, char: 'b'},
 			{op: insertChar, local: 0, char: 'c'},
 			{op: insertChar, local: 0, char: 'd'},
-			{op: check, local: 0, str: "*bcd"},
+			{op: checkJSON, local: 0, str: `["bcd"]`},
 			// Insert another str container: str2 -> efg, str1 -> bcd
 			{op: insertStr, local: 0},
 			{op: insertChar, local: 0, char: 'e'},
 			{op: insertChar, local: 0, char: 'f'},
 			{op: insertChar, local: 0, char: 'g'},
-			{op: check, local: 0, str: "*efg*bcd"},
+			{op: checkJSON, local: 0, str: `["efg", "bcd"]`},
 		})
 	})
 
@@ -452,16 +452,16 @@ func TestInsertStrDomainCases(t *testing.T) {
 			{op: insertChar, local: 0, char: 'b'},
 			{op: insertChar, local: 0, char: 'c'},
 			{op: insertChar, local: 0, char: 'd'},
-			{op: check, local: 0, str: "*bcd"},
+			{op: checkJSON, local: 0, str: `["bcd"]`},
 			// Insert another str container: str2 -> efg, str1 -> bcd
 			{op: insertStr, local: 0},
 			{op: insertChar, local: 0, char: 'e'},
 			{op: insertChar, local: 0, char: 'f'},
 			{op: insertChar, local: 0, char: 'g'},
-			{op: check, local: 0, str: "*efg*bcd"},
+			{op: checkJSON, local: 0, str: `["efg", "bcd"]`},
 			//Delete the string 'efg'
 			{op: deleteCharAt, pos: 0},
-			{op: check, local: 0, str: "*bcd"},
+			{op: checkJSON, local: 0, str: `["bcd"]`},
 		})
 	})
 	t.Run("Insert2StringsAndDeleteTheSecond", func(t *testing.T) {
@@ -471,16 +471,16 @@ func TestInsertStrDomainCases(t *testing.T) {
 			{op: insertChar, local: 0, char: 'b'},
 			{op: insertChar, local: 0, char: 'c'},
 			{op: insertChar, local: 0, char: 'd'},
-			{op: check, local: 0, str: "*bcd"},
+			{op: checkJSON, local: 0, str: `["bcd"]`},
 			// Insert another str container: str2 -> efg, str1 -> bcd
 			{op: insertStr, local: 0},
 			{op: insertChar, local: 0, char: 'e'},
 			{op: insertChar, local: 0, char: 'f'},
 			{op: insertChar, local: 0, char: 'g'},
-			{op: check, local: 0, str: "*efg*bcd"},
+			{op: checkJSON, local: 0, str: `["efg", "bcd"]`},
 			//Delete the string 'efg'
 			{op: deleteCharAt, pos: 4},
-			{op: check, local: 0, str: "*efg"},
+			{op: checkJSON, local: 0, str: `["efg"]`},
 		})
 	})
 
@@ -495,20 +495,145 @@ func TestMergeMultipleStrContainers(t *testing.T) {
 		{op: insertChar, local: 0, char: 'b'},
 		{op: insertChar, local: 0, char: 'c'},
 		{op: insertChar, local: 0, char: 'd'},
-		{op: check, local: 0, str: "*bcd"},
+		{op: checkJSON, local: 0, str: `["bcd"]`},
 		// fork and
 		{op: insertStr, local: 1},
 		{op: insertChar, local: 1, char: 'e'},
 		{op: insertChar, local: 1, char: 'f'},
 		{op: insertChar, local: 1, char: 'g'},
-		{op: check, local: 1, str: "*efg"},
+		{op: checkJSON, local: 1, str: `["efg"]`},
 		// Merge site #1 -> site #0
 		{op: merge, local: 0, remote: 1},
-		{op: check, local: 0, str: "*bcd*efg"},
+		{op: checkJSON, local: 0, str: `["bcd", "efg"]`},
 	})
 }
 
 // -----
+
+//Tests for insertCounter
+
+/*Edge cases*/
+func TestInsertCounterEdgeCases(t *testing.T) {
+
+	t.Run("EmptyCounter", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert empty counter
+			{op: insertCounter, local: 0},
+			{op: checkJSON, local: 0, str: `[0]`},
+			// Insert another empty counter
+			{op: insertCounter, local: 0},
+			{op: checkJSON, local: 0, str: `[0, 0]`},
+		})
+	})
+	t.Run("MergeDifferentCounters", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Fork site 0:
+			{op: fork, local: 0, remote: 1},
+			// Insert counter 12 into site 0
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 12},
+			{op: checkJSON, local: 0, str: `[12]`},
+			// Insert counter 23 into site 1
+			{op: insertCounter, local: 1},
+			{op: insertAdd, local: 1, val: 23},
+			{op: checkJSON, local: 1, str: `[23]`},
+			// Merge site #1 -> site #0
+			{op: merge, local: 0, remote: 1},
+			{op: checkJSON, local: 0, str: `[12, 23]`},
+		})
+	})
+	t.Run("MergeSameCounter", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Insert counter 11 into site 0
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 12},
+			{op: insertAdd, local: 0, val: -1},
+			{op: checkJSON, local: 0, str: `[11]`},
+			// Fork site 0:
+			{op: fork, local: 0, remote: 1},
+			{op: insertAdd, local: 0, val: -2},
+			{op: checkJSON, local: 0, str: `[9]`},
+			{op: insertAdd, local: 1, val: 9},
+			{op: checkJSON, local: 1, str: `[20]`},
+			// Merge site #1 -> site #0
+			{op: merge, local: 0, remote: 1},
+			{op: checkJSON, local: 0, str: `[18]`}, //12 - 1 - 2 + 9
+		})
+	})
+	t.Run("DeleteCounter", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Delete counter container:
+			{op: insertCounter, local: 0},
+			{op: deleteCharAt, pos: 0},
+			{op: checkJSON, local: 0, str: `null`},
+			// Add 25 and delete the counter container:
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 25},
+			{op: deleteCharAt, pos: 0},
+			{op: checkJSON, local: 0, str: `null`},
+		})
+	})
+}
+
+func TestInsertCounterDomainCases(t *testing.T) {
+	t.Run("Insert2Counters", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: counter1->0
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 1},
+			{op: insertAdd, local: 0, val: 2},
+			{op: insertAdd, local: 0, val: -3},
+			{op: checkJSON, local: 0, str: `[0]`},
+			// Insert another counter container: counter2 -> -2, counter1 -> 0
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 1},
+			{op: insertAdd, local: 0, val: -2},
+			{op: insertAdd, local: 0, val: -1},
+			{op: checkJSON, local: 0, str: `[-2, 0]`},
+		})
+	})
+	t.Run("Insert2CountersAndDeleteTheFirst", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: counter1->-2
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 1},
+			{op: insertAdd, local: 0, val: 0},
+			{op: insertAdd, local: 0, val: -3},
+			{op: checkJSON, local: 0, str: `[-2]`},
+			// Insert another counter container: counter2 -> 0, counter1 -> -2
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 3},
+			{op: insertAdd, local: 0, val: -2},
+			{op: insertAdd, local: 0, val: -1},
+			{op: checkJSON, local: 0, str: `[0, -2]`},
+			//Delete the counter 0
+			{op: deleteCharAt, pos: 0},
+			{op: checkJSON, local: 0, str: `[-2]`},
+		})
+	})
+	t.Run("Insert2CountersAndDeleteTheSecond", func(t *testing.T) {
+		testOperations(t, []operation{
+			// Create site #0: counter1->-2
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 1},
+			{op: insertAdd, local: 0, val: 0},
+			{op: insertAdd, local: 0, val: -3},
+			{op: checkJSON, local: 0, str: `[-2]`},
+			// Insert another counter container: counter2 -> 0, counter1 -> -2
+			{op: insertCounter, local: 0},
+			{op: insertAdd, local: 0, val: 3},
+			{op: insertAdd, local: 0, val: -2},
+			{op: insertAdd, local: 0, val: -1},
+			{op: checkJSON, local: 0, str: `[0, -2]`},
+			//Delete the counter -2
+			{op: deleteCharAt, pos: 4},
+			{op: checkJSON, local: 0, str: `[0]`},
+		})
+	})
+
+}
+
+/*--------*/
 
 func TestValidateFuzzList(t *testing.T) {
 	f, err := os.Open("testdata/fuzz/FuzzList")

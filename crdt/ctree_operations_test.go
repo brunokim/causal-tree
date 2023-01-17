@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/brunokim/causal-tree/crdt"
 )
 
@@ -29,6 +31,7 @@ import (
 // fork <local> <remote>             -- fork list 'local' into list 'remote'.
 // merge <local> <remote>            -- merge list 'remote' into list 'local'.
 // check <local> <str>               -- check that the contents of 'local' spell 'str'.
+// checkJSON <local> <str>           -- check that the contents of JSON string 'local' is equivalent to the contents of JSON string 'str'.
 //
 // Trees are referred by their order of creation, NOT by their sitemap index.
 // The fork operation requires specifying the correct remote index, even if it can be
@@ -46,7 +49,11 @@ const (
 	fork
 	merge
 	check
+	checkJSON
 	insertStr
+	insertAdd
+	insertAddAt
+	insertCounter
 )
 
 var numBytes = map[operationType]int{
@@ -57,6 +64,10 @@ var numBytes = map[operationType]int{
 	deleteCharAt: 3, // deleteCharAt local pos
 	fork:         2, // fork local
 	merge:        3, // merge local remote
+	insertStr:    2,
+	//insertAdd:  ?,
+	//insertAddAt: ?,
+	//insertCounter: ?,
 	//check is not encoded/decoded
 }
 
@@ -66,6 +77,7 @@ type operation struct {
 	char          rune
 	pos           int
 	str           string
+	val           int32
 }
 
 func (op operation) String() string {
@@ -84,6 +96,8 @@ func (op operation) String() string {
 		return fmt.Sprintf("fork tree #%d into tree #%d", op.local, op.remote)
 	case merge:
 		return fmt.Sprintf("merge tree #%d into tree #%d", op.remote, op.local)
+	case insertStr:
+		return fmt.Sprintf("insert str at tree #%d", op.local)
 	}
 	return ""
 }
@@ -117,6 +131,8 @@ func decodeOperation(bs []byte) (operation, int) {
 		// Do nothing
 	case merge:
 		result.remote = toIndex(bs[2])
+	case insertStr:
+		// Do nothing
 	default:
 		return operation{}, 0
 	}
@@ -167,7 +183,7 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 		case setCursor:
 			tree.SetCursor(op.pos)
 		case insertStr:
-			tree.InsertStr()
+			must(tree.InsertStr())
 		case insertCharAt:
 			must(tree.InsertCharAt(op.char, op.pos))
 		case deleteCharAt:
@@ -185,9 +201,18 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 			if s := tree.ToString(); s != op.str {
 				t.Errorf("%d: got tree[%d] = %q, want %q", i, op.local, s, op.str)
 			}
+		case checkJSON:
+			s, _ := tree.ToJSON()
+			assert.JSONEq(t, op.str, string(s), "%d: got tree[%d] = %q, want equivalent of %q", i, op.local, s, op.str)
+		case insertAdd:
+			must(tree.InsertAdd(op.val))
+		case insertAddAt:
+			must(tree.InsertAddAt(op.val, op.pos))
+		case insertCounter:
+			must(tree.InsertCounter())
 		}
 		// Dump trees into testfile.
-		if f != nil && op.op != check {
+		if f != nil && op.op != check && op.op != checkJSON {
 			bs, err := json.Marshal(map[string]interface{}{
 				"Type":   "test",
 				"Action": op.String(),
@@ -251,6 +276,10 @@ func validateOperations(ops []operation) error {
 				return fmt.Errorf("invalid remote index %d (len: %d), op: %v", op.remote, len(trees), op)
 			} else {
 				tree.Merge(trees[op.remote])
+			}
+		case insertStr:
+			if err := tree.InsertStr(); err != nil {
+				return fmt.Errorf("%v: %v", op, err)
 			}
 		default:
 			return fmt.Errorf("invalid op %v", op.op)
