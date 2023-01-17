@@ -875,11 +875,11 @@ func (t *CausalTree) SetCursor(i int) error {
 // + Operations - Atom Priority constants |
 // +--------------------------------------+
 const (
-	InsertCharPriority    = 0
-	InsertStrPriority     = 30
-	DeletePriority        = 100
-	InsertCounterPriority = 30
-	InsertAddPriority     = 30
+	insertCharPriority    = 0
+	insertStrPriority     = 30
+	deletePriority        = 100
+	insertCounterPriority = 30
+	insertAddPriority     = 30
 )
 
 // +--------------------------+
@@ -892,7 +892,7 @@ type InsertChar struct {
 	Char rune
 }
 
-func (v InsertChar) AtomPriority() int { return InsertCharPriority }
+func (v InsertChar) AtomPriority() int { return insertCharPriority }
 func (v InsertChar) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fmt.Sprintf("insert %c", v.Char))
 }
@@ -932,7 +932,7 @@ func (t *CausalTree) InsertCharAt(ch rune, i int) error {
 // Delete represents deleting an element from the tree.
 type Delete struct{}
 
-func (v Delete) AtomPriority() int { return DeletePriority }
+func (v Delete) AtomPriority() int { return deletePriority }
 func (v Delete) MarshalJSON() ([]byte, error) {
 	return []byte(`"delete"`), nil
 }
@@ -969,7 +969,7 @@ func (t *CausalTree) DeleteCharAt(i int) error {
 //Inserts a string container as a child of the root atom.
 type InsertStr struct{}
 
-func (v InsertStr) AtomPriority() int { return InsertStrPriority }
+func (v InsertStr) AtomPriority() int { return insertStrPriority }
 func (v InsertStr) MarshalJSON() ([]byte, error) {
 	return json.Marshal("insert str container")
 }
@@ -1003,7 +1003,7 @@ type InsertAdd struct {
 	Value int32
 }
 
-func (v InsertAdd) AtomPriority() int { return InsertAddPriority }
+func (v InsertAdd) AtomPriority() int { return insertAddPriority }
 func (v InsertAdd) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fmt.Sprintf("insert %d", v.Value))
 }
@@ -1045,7 +1045,7 @@ func (t *CausalTree) InsertAddAt(val int32, i int) error {
 //Inserts a counter container as a child of the root atom.
 type InsertCounter struct{}
 
-func (v InsertCounter) AtomPriority() int { return InsertCounterPriority }
+func (v InsertCounter) AtomPriority() int { return insertCounterPriority }
 func (v InsertCounter) MarshalJSON() ([]byte, error) {
 	return json.Marshal("insert counter container")
 }
