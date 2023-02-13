@@ -43,7 +43,7 @@ func (m *stateMachine) DeleteCharAt(t *rapid.T) {
 	}
 	i := rapid.IntRange(0, len(m.chars)-1).Draw(t, "i").(int)
 
-	err := m.t.DeleteCharAt(i)
+	err := m.t.DeleteAt(i)
 	if err != nil {
 		t.Fatal("(*stateMachine).DeleteCharAt:", err)
 	}

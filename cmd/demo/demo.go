@@ -259,7 +259,7 @@ func (s *state) handleEdit(w http.ResponseWriter, req *editRequest) {
 			log.Printf("%s: operation = insertCharAt %c %d", id, ch, i-1)
 			i++
 		case "delete":
-			tree.site.DeleteCharAt(i)
+			tree.site.DeleteAt(i)
 			log.Printf("%s: operation = deleteCharAt %d", id, i)
 		}
 		// Dump trees into debug file.

@@ -942,8 +942,8 @@ func (v Delete) ValidateChild(child AtomValue) error {
 	return fmt.Errorf("invalid atom value after Delete: %T (%v)", child, child)
 }
 
-// DeleteChar deletes the char at the cursor position, and relocates the cursor to its cause.
-func (t *CausalTree) DeleteChar() error {
+// Delete deletes the char at the cursor position, and relocates the cursor to its cause.
+func (t *CausalTree) Delete() error {
 	if t.Cursor.Timestamp == 0 {
 		return ErrNoAtomToDelete
 	}
@@ -954,12 +954,12 @@ func (t *CausalTree) DeleteChar() error {
 	return nil
 }
 
-// DeleteCharAt deletes the char at the given (tree) position.
-func (t *CausalTree) DeleteCharAt(i int) error {
+// DeleteAt deletes the char at the given (tree) position.
+func (t *CausalTree) DeleteAt(i int) error {
 	if err := t.SetCursor(i); err != nil {
 		return err
 	}
-	return t.DeleteChar()
+	return t.Delete()
 }
 
 // +-----------------------------------+

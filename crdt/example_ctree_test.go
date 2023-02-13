@@ -17,16 +17,16 @@ func Example() {
 
 	// Rewrite 'crdt is' with 'crdts are' in t2.
 	t2.SetCursor(6) //             .-- place cursor here
-	t2.DeleteChar() // c r d t _ i s
-	t2.DeleteChar() //         ^ ^ ^
-	t2.DeleteChar() //         and delete 3 chars
+	t2.Delete()     // c r d t _ i s
+	t2.Delete()     //         ^ ^ ^
+	t2.Delete()     //         and delete 3 chars
 	for _, ch := range "s are" {
 		t2.InsertChar(ch)
 	}
 
 	// Rewrite 'nice' with 'cool' in t1.
 	for i := 0; i < 4; i++ {
-		t1.DeleteChar()
+		t1.Delete()
 	}
 	for _, ch := range "cool" {
 		t1.InsertChar(ch)
@@ -53,12 +53,12 @@ func ExampleCausalTree_overlap() {
 	t2, _ := t1.Fork()
 
 	// t1: desserts -> desert
-	t1.DeleteCharAt(7)
-	t1.DeleteCharAt(3)
+	t1.DeleteAt(7)
+	t1.DeleteAt(3)
 
 	// t2: desserts -> dresser
-	t2.DeleteCharAt(7)
-	t2.DeleteCharAt(6)
+	t2.DeleteAt(7)
+	t2.DeleteAt(6)
 	t2.InsertCharAt('r', 0)
 
 	t1.Merge(t2)

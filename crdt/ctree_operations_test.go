@@ -49,7 +49,6 @@ const (
 	fork
 	merge
 	check
-	checkJSON
 	insertStr
 	insertAdd
 	insertAddAt
@@ -179,7 +178,7 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 		case insertChar:
 			must(tree.InsertChar(op.char))
 		case deleteChar:
-			must(tree.DeleteChar())
+			must(tree.Delete())
 		case setCursor:
 			tree.SetCursor(op.pos)
 		case insertStr:
@@ -187,7 +186,7 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 		case insertCharAt:
 			must(tree.InsertCharAt(op.char, op.pos))
 		case deleteCharAt:
-			must(tree.DeleteCharAt(op.pos))
+			must(tree.DeleteAt(op.pos))
 		case fork:
 			if op.remote != len(trees) {
 				t.Fatalf("fork: expecting remote index %d, got %d", op.remote, len(trees))
@@ -198,10 +197,6 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 		case merge:
 			tree.Merge(trees[op.remote])
 		case check:
-			if s := tree.ToString(); s != op.str {
-				t.Errorf("%d: got tree[%d] = %q, want %q", i, op.local, s, op.str)
-			}
-		case checkJSON:
 			s, _ := tree.ToJSON()
 			assert.JSONEq(t, op.str, string(s), "%d: got tree[%d] = %q, want equivalent of %q", i, op.local, s, op.str)
 		case insertAdd:
@@ -212,7 +207,7 @@ func testOperations(t *testing.T, ops []operation) []*crdt.CausalTree {
 			must(tree.InsertCounter())
 		}
 		// Dump trees into testfile.
-		if f != nil && op.op != check && op.op != checkJSON {
+		if f != nil && op.op != check {
 			bs, err := json.Marshal(map[string]interface{}{
 				"Type":   "test",
 				"Action": op.String(),
@@ -250,7 +245,7 @@ func validateOperations(ops []operation) error {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case deleteChar:
-			if err := tree.DeleteChar(); err != nil {
+			if err := tree.Delete(); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case setCursor:
@@ -262,7 +257,7 @@ func validateOperations(ops []operation) error {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case deleteCharAt:
-			if err := tree.DeleteCharAt(op.pos); err != nil {
+			if err := tree.DeleteAt(op.pos); err != nil {
 				return fmt.Errorf("%v: %v", op, err)
 			}
 		case fork:
@@ -355,10 +350,10 @@ func makeRandomTree(size int, r *rand.Rand) (*crdt.CausalTree, error) {
 				n++
 			} else if p < 0.9 && n > 0 {
 				pos := r.Intn(n)
-				err = t.DeleteCharAt(pos)
+				err = t.DeleteAt(pos)
 				n--
 			} else if t.Cursor != (crdt.AtomID{}) {
-				err = t.DeleteChar()
+				err = t.Delete()
 				n--
 			}
 			if err != nil {
